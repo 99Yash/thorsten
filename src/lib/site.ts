@@ -1,5 +1,5 @@
 export const siteConfig = {
-  name: 'Olivia',
+  name: 'thorsten',
   url: 'https://olivia.ygkr.live',
   ogImage: 'https://olivia.ygkr.live/og.png',
   description: 'The most sophisticated AI assistant for building your resume',
