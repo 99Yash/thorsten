@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import { MainLayout } from '~/components/layouts/main';
 import { Providers } from '~/components/layouts/providers';
 import { siteConfig } from '~/lib/site';
+import { GTWalsheim } from '~/styles/fonts';
 import './globals.css';
 
 const geistSans = Geist({
@@ -47,7 +48,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${GTWalsheim.variable} ${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
           <MainLayout>{children}</MainLayout>
