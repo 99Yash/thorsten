@@ -137,19 +137,6 @@ export const LinkedInRawProfileSchema = z
   .partial()
   .loose();
 
-// Server-only debug logs for schemas
-if (typeof window === 'undefined') {
-  // Note: Logging schema objects directly for visibility in server logs
-  // Avoids leaking in client due to the window guard above.
-
-  console.log(
-    '[LinkedIn][schema] LinkedInRawProfileSchema:',
-    LinkedInRawProfileSchema
-  );
-
-  console.log('[LinkedIn][schema] imageItemSchema:', imageItemSchema);
-}
-
 export type LinkedInRawProfile = z.infer<typeof LinkedInRawProfileSchema>;
 export type LinkedInCertification = z.infer<typeof certificationSchema>;
 export type LinkedInProject = z.infer<typeof projectSchema>;
