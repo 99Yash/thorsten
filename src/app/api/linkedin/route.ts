@@ -96,7 +96,8 @@ export async function POST(req: Request) {
     );
     // Bypass schema validation and return raw payload
     return NextResponse.json({ data: raw }, { status: 200 });
-  } catch {
+  } catch (err) {
+    console.error('[LinkedIn][route] Error:', err);
     return NextResponse.json(
       { error: 'Unexpected server error while fetching LinkedIn profile.' },
       { status: 500 }
