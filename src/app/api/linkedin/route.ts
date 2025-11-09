@@ -20,13 +20,13 @@ const BodySchema = z
 
 // Server-side schema logs
 
-console.log('[LinkedIn][route] BodySchema:', BodySchema);
-
-console.log(
-  '[LinkedIn][route] LinkedInRawProfileSchema:',
-  LinkedInRawProfileSchema
-);
-
+if (process.env.DEBUG_LINKEDIN_ROUTE === '1') {
+  console.log('[LinkedIn][route] BodySchema:', BodySchema);
+  console.log(
+    '[LinkedIn][route] LinkedInRawProfileSchema:',
+    LinkedInRawProfileSchema
+  );
+}
 export async function POST(req: Request) {
   try {
     const json = await req.json().catch(() => ({}));
