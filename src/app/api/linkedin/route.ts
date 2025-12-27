@@ -253,10 +253,7 @@ export async function POST(req: Request) {
           { status: 200 }
         );
       } catch (err) {
-        // If the existing request failed, we'll fall through to create a new one
-        // Remove the failed request from the map
-        pendingRequests.delete(username);
-        // Re-throw to be handled by outer catch
+        // Propagate the failure; cleanup is handled by the creator's finally block
         throw err;
       }
     }
