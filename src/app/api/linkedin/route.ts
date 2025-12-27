@@ -23,7 +23,6 @@ const BodySchema = z
     path: ['url'],
   });
 
-// Server-side schema logs
 if (process.env.DEBUG_LINKEDIN_ROUTE === '1') {
   console.log('[LinkedIn][route] BodySchema:', BodySchema);
   console.log(
@@ -51,7 +50,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check for cached profile first (unless forceRefresh is true)
     if (!body.forceRefresh) {
       const cached = await db.query.linkedinProfile.findFirst({
         where: eq(linkedinProfile.username, username),
@@ -69,7 +67,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Fetch fresh data from RapidAPI
     const apiHost = RAPID_API_URL;
     const apiKey = process.env.RAPID_API_KEY;
 
@@ -119,14 +116,12 @@ export async function POST(req: Request) {
       { depth: Infinity, colors: true }
     );
 
-    // Save or update the profile in database
     const now = new Date();
     const existingProfile = await db.query.linkedinProfile.findFirst({
       where: eq(linkedinProfile.username, username),
     });
 
     if (existingProfile) {
-      // Update existing profile
       await db
         .update(linkedinProfile)
         .set({
@@ -141,7 +136,6 @@ export async function POST(req: Request) {
         })
         .where(eq(linkedinProfile.id, existingProfile.id));
     } else {
-      // Insert new profile
       await db.insert(linkedinProfile).values({
         id: createId('lpro'),
         username,

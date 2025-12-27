@@ -46,7 +46,6 @@ export function EmailSignIn() {
           callbackURL: '/',
         });
 
-        // Persist last used auth method
         if (typeof window !== 'undefined') {
           setLocalStorageItem('LAST_AUTH_METHOD', 'EMAIL');
         }

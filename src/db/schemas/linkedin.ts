@@ -13,7 +13,6 @@ export const linkedinProfile = pgTable(
   {
     id: text('id').primaryKey(),
 
-    // Core identifier - unique per LinkedIn user
     username: text('username').notNull(),
 
     // Denormalized fields for easy display without parsing rawData
@@ -23,7 +22,6 @@ export const linkedinProfile = pgTable(
     location: text('location'),
     summary: text('summary'),
 
-    // Full raw response from RapidAPI
     rawData: jsonb('raw_data').$type<LinkedInRawProfile>().notNull(),
 
     // When we last fetched from API (what user sees as "last analysed")

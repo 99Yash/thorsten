@@ -10,10 +10,8 @@ const PERSONAL_PATH_PREFIXES = ['/in/', '/pub/'];
 
 export function isLikelyUsername(input: string): boolean {
 	if (!input) return false;
-	const trimmed = input.trim();
-	// Allow alphanumerics and hyphens (common LinkedIn username pattern)
+  const trimmed = input.trim();
 	if (!/^[a-zA-Z0-9-]{3,100}$/.test(trimmed)) return false;
-	// Avoid obvious org/school/company handles
 	if (/(company|school|learning|posts|feed|jobs|groups|events)/i.test(trimmed)) return false;
 	return true;
 }
@@ -22,12 +20,10 @@ export function extractLinkedInUsername(raw: string): string | null {
 	if (!raw) return null;
 	const input = raw.trim();
 
-	// If it's a likely username already, return it
 	if (isLikelyUsername(input)) {
 		return input;
 	}
 
-	// Try parse as URL
 	try {
 		const url = new URL(input.startsWith('http') ? input : `https://${input}`);
 		if (!LINKEDIN_HOSTS.has(url.hostname)) return null;
@@ -44,14 +40,12 @@ export function extractLinkedInUsername(raw: string): string | null {
 				}
 			}
 		}
-		// Some localized or mwlite paths might include /mwlite/in/<username>
 		const parts = pathname.split('/').filter(Boolean);
 		const inIdx = parts.findIndex((p) => p.toLowerCase() === 'in');
 		if (inIdx !== -1 && parts[inIdx + 1] && isLikelyUsername(parts[inIdx + 1])) {
 			return parts[inIdx + 1];
 		}
 	} catch {
-		// not a URL
 	}
 
 	return null;

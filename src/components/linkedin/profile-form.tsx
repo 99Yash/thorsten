@@ -31,8 +31,6 @@ const schema = z.object({
 			(val) => {
 				const v = val.trim();
 				if (!v) return false;
-				// Valid if:
-				// 1) It's a linkedin URL with a personal profile path
 				try {
 					const url = new URL(v.startsWith('http') ? v : `https://${v}`);
 					const host = url.hostname.replace(/^www\./, '');
@@ -43,9 +41,7 @@ const schema = z.object({
 						}
 					}
 				} catch {
-					// not a url
 				}
-				// 2) Or it looks like a username
 				return isLikelyUsername(v);
 			},
 			{ message: 'Enter a valid LinkedIn personal profile URL or username' }

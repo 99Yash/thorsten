@@ -91,7 +91,6 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
     : undefined;
 
   const positions = (profile.fullPositions ?? profile.position ?? []).slice();
-  // Sort with current/most recent first
   const yearVal = (y?: number | null) =>
     typeof y === 'number' && y > 0 ? y : undefined;
   positions.sort((a, b) => {
