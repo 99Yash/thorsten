@@ -293,6 +293,7 @@ export async function POST(req: Request) {
       );
     }
 
+    // Generic fallback handler: ensure any unexpected error is caught and reported as a 500.
     return NextResponse.json(
       {
         error: 'Unexpected server error while fetching LinkedIn profile.',
