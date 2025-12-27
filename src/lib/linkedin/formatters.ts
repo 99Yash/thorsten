@@ -71,6 +71,8 @@ export function formatRelativeTime(dateString: string): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
 
+  // Handle future dates explicitly so we don't show confusing negative-relative
+  // times like "-3 days ago" when the given date is after the current time.
   if (diffMs < 0) {
     return 'In the future';
   }
