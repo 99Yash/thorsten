@@ -129,6 +129,8 @@ export function ProfileForm() {
 
       lastFetchedUsernameRef.current = username;
 
+      // Update the `username` query parameter in the URL so the current
+      // analysed username is reflected in navigation and other effects.
       await setUsernameParam(username);
 
       const res = await fetch('/api/linkedin', {
