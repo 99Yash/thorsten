@@ -80,9 +80,7 @@ async function fetchProfileFromAPI(
       cache: 'no-store',
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
   } catch (err) {
-    clearTimeout(timeoutId);
     if (err instanceof Error && err.name === 'AbortError') {
       throw new AppError({
         code: 'TIMEOUT',
@@ -95,6 +93,8 @@ async function fetchProfileFromAPI(
       'Failed to fetch profile',
       err
     );
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (!res.ok) {
@@ -253,7 +253,10 @@ export async function POST(req: Request) {
           { status: 200 }
         );
       } catch (err) {
-        // Propagate the failure; cleanup is handled by the creator's finally block
+        // If the existing request failed, we'll fall through to create a new one
+        // Remove the failed request from the map
+        pendingRequests.delete(username);
+        // Re-throw to be handled by outer catch
         throw err;
       }
     }
