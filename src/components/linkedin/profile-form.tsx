@@ -77,6 +77,7 @@ export function ProfileForm() {
   );
   const [showModal, setShowModal] = React.useState(false);
   const lastFetchedUsernameRef = React.useRef<string | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -98,7 +99,7 @@ export function ProfileForm() {
   }, [usernameParam, form]);
 
   // Auto-fetch profiles when a ?username=... query parameter is present.
-  // 
+  //
   // This effect runs whenever the URL `username` query param changes. If the
   // value looks like a valid LinkedIn username, we normalise it (via
   // `extractLinkedInUsername`) and trigger `fetchProfile` exactly once for
@@ -176,7 +177,10 @@ export function ProfileForm() {
           <Button
             variant="default"
             size="sm"
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              setShowModal(true);
+              form.reset({ input: '' });
+            }}
             className="gap-2"
           >
             <Plus className="size-4" />
@@ -184,7 +188,16 @@ export function ProfileForm() {
           </Button>
         </div>
 
-        <Modal showModal={showModal} setShowModal={setShowModal}>
+        <Modal
+          showModal={showModal}
+          setShowModal={setShowModal}
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            if (inputRef.current) {
+              inputRef.current.focus();
+            }
+          }}
+        >
           <Card className="border-0 shadow-none">
             <CardHeader className="text-left">
               <CardTitle>Import LinkedIn profile</CardTitle>
@@ -201,23 +214,30 @@ export function ProfileForm() {
                   <FormField
                     control={form.control}
                     name="input"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>LinkedIn URL or username</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="linkedin.com/in/jane-doe"
-                            autoComplete="off"
-                            inputMode="url"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormDescription className="text-xs">
-                          Client-side validation only.
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    render={({ field }) => {
+                      const { ref: fieldRef, ...fieldProps } = field;
+                      return (
+                        <FormItem>
+                          <FormLabel>LinkedIn URL or username</FormLabel>
+                          <FormControl>
+                            <Input
+                              ref={(e) => {
+                                fieldRef(e);
+                                inputRef.current = e;
+                              }}
+                              placeholder="linkedin.com/in/jane-doe"
+                              autoComplete="off"
+                              inputMode="url"
+                              {...fieldProps}
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs">
+                            Client-side validation only.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
                   />
                   <Button type="submit" disabled={loading} className="w-full">
                     {loading ? 'Fetching…' : 'Fetch profile'}
