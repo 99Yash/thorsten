@@ -149,6 +149,7 @@ async function fetchProfileFromAPI(
     );
   }
 
+  // From this point on, always use the validated data (profileData), not the raw response.
   const profileData = validated.data;
   const now = new Date();
 
