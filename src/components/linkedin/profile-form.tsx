@@ -102,9 +102,9 @@ export function ProfileForm() {
     }
   }
 
-  const onSubmit = React.useCallback((values: FormValues) => {
+  const onSubmit = (values: FormValues) => {
     return fetchProfile(values, false);
-  }, []);
+  };
 
   return (
     <div className="w-full max-w-7xl">
