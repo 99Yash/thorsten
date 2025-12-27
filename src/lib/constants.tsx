@@ -43,3 +43,5 @@ export const getProviderById = (
 ): OAuthProvider | undefined => {
   return OAUTH_PROVIDERS[id];
 };
+
+export const LINKEDIN_RESCRAPE_THRESHOLD_MONTHS = 4;

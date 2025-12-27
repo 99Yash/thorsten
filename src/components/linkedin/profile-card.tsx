@@ -19,7 +19,11 @@ import {
 } from '~/components/ui/card';
 import { ScrollArea } from '~/components/ui/scroll-area';
 import { Separator } from '~/components/ui/separator';
-import type { LinkedInRawProfile } from '~/lib/linkedin/schema';
+import { LINKEDIN_RESCRAPE_THRESHOLD_MONTHS } from '~/lib/constants';
+import type {
+  LinkedInProject,
+  LinkedInRawProfile,
+} from '~/lib/linkedin/schema';
 
 function initialsOf(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
@@ -50,30 +54,88 @@ function calculateDuration(
   end?: { year?: number; month?: number; day?: number } | null
 ): string | undefined {
   if (!start?.year) return undefined;
-  
-  const startDate = new Date(start.year, (start.month || 1) - 1, start.day || 1);
-  const endDate = end?.year && end.year > 0
-    ? new Date(end.year, (end.month || 1) - 1, end.day || 1)
-    : new Date();
-  
+
+  const startDate = new Date(
+    start.year,
+    (start.month || 1) - 1,
+    start.day || 1
+  );
+  const endDate =
+    end?.year && end.year > 0
+      ? new Date(end.year, (end.month || 1) - 1, end.day || 1)
+      : new Date();
+
   const diffMs = endDate.getTime() - startDate.getTime();
   const diffMonths = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30.44));
-  
+
   if (diffMonths < 1) return 'Less than a month';
-  
+
   const years = Math.floor(diffMonths / 12);
   const months = diffMonths % 12;
-  
+
   const parts: string[] = [];
   if (years > 0) parts.push(`${years} yr${years > 1 ? 's' : ''}`);
   if (months > 0) parts.push(`${months} mo${months > 1 ? 's' : ''}`);
-  
+
   return parts.join(' ');
 }
 
-export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) {
+    return 'Unknown';
+  }
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMonths = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30.44));
+
+  if (diffMonths < 1) {
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    return `${diffDays} days ago`;
+  }
+
+  if (diffMonths < 12) {
+    return `${diffMonths} month${diffMonths > 1 ? 's' : ''} ago`;
+  }
+
+  const diffYears = Math.floor(diffMonths / 12);
+  const remainingMonths = diffMonths % 12;
+  if (remainingMonths === 0) {
+    return `${diffYears} year${diffYears > 1 ? 's' : ''} ago`;
+  }
+  return `${diffYears} year${
+    diffYears > 1 ? 's' : ''
+  }, ${remainingMonths} month${remainingMonths > 1 ? 's' : ''} ago`;
+}
+
+function isOlderThanThreshold(
+  dateString: string | null,
+  thresholdMonths: number
+): boolean {
+  if (!dateString) return true;
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return true;
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMonths = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30.44));
+  return diffMonths >= thresholdMonths;
+}
+
+export function ProfileCard({
+  profile,
+  lastAnalysedAt,
+  onRescrape,
+  isRescraping = false,
+}: {
+  profile: LinkedInRawProfile;
+  lastAnalysedAt?: string | null;
+  onRescrape?: () => void;
+  isRescraping?: boolean;
+}) {
   const [showRawJson, setShowRawJson] = React.useState(false);
-  
+
   const fullName = [profile.firstName, profile.lastName]
     .filter(Boolean)
     .join(' ')
@@ -108,12 +170,11 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
   const skills = (profile.skills ?? []).filter((s) => s?.name?.trim());
   const educations = profile.educations ?? [];
   const languages = profile.languages ?? [];
-  const projectItems =
-    Array.isArray((profile as any).projects)
-      ? (((profile as any).projects as any[]) ?? [])
-      : Array.isArray((profile as any).projects?.items)
-      ? ((((profile as any).projects?.items as any[]) ?? []) as any[])
-      : [];
+  const projectItems: LinkedInProject[] = Array.isArray(profile.projects)
+    ? (profile.projects as LinkedInProject[])
+    : Array.isArray(profile.projects?.items)
+    ? (profile.projects.items as LinkedInProject[])
+    : [];
 
   return (
     <Card className="w-full">
@@ -154,16 +215,37 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
             ) : null}
             {profile.isHiring ? <Badge variant="outline">Hiring</Badge> : null}
           </div>
-          <div className="mt-2 text-xs">
+          <div className="mt-2 flex items-center gap-3 flex-wrap">
             {linkedinUrl ? (
               <a
-                className="text-muted-foreground hover:text-foreground underline underline-offset-4"
+                className="text-muted-foreground hover:text-foreground underline underline-offset-4 text-xs"
                 href={linkedinUrl}
                 target="_blank"
                 rel="noreferrer"
               >
                 @{username}
               </a>
+            ) : null}
+            {lastAnalysedAt ? (
+              <span className="text-muted-foreground text-xs">
+                Last analysed: {formatRelativeTime(lastAnalysedAt)}
+              </span>
+            ) : null}
+            {lastAnalysedAt &&
+            isOlderThanThreshold(
+              lastAnalysedAt,
+              LINKEDIN_RESCRAPE_THRESHOLD_MONTHS
+            ) &&
+            onRescrape ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onRescrape}
+                disabled={isRescraping}
+                className="text-xs h-7"
+              >
+                {isRescraping ? 'Re-scraping…' : 'Re-scrape profile'}
+              </Button>
             ) : null}
           </div>
         </div>
@@ -177,584 +259,657 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
           </ScrollArea>
         ) : (
           <>
-        {profile.summary ? (
-          <section>
-            <h3 className="mb-2 text-sm font-medium text-foreground">About</h3>
-            <p className="text-sm leading-relaxed">{profile.summary}</p>
-          </section>
-        ) : null}
+            {profile.summary ? (
+              <section>
+                <h3 className="mb-2 text-sm font-medium text-foreground">
+                  About
+                </h3>
+                <p className="text-sm leading-relaxed">{profile.summary}</p>
+              </section>
+            ) : null}
 
-        {profile.profilePictures?.length ? (
-          <section>
-            <h3 className="mb-2 text-sm font-medium text-foreground">
-              Profile media
-            </h3>
-            <ScrollArea className="w-full">
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {profile.profilePictures
-                  .filter((img) => !!img?.url)
-                  .map((img, idx) => {
-                  const w = img.width ?? 80;
-                  const h = img.height ?? 80;
-                  return (
-                    // Using native img to avoid Next Image layout shifts for unknown remote hosts
-                    <img
-                      key={idx}
-                      src={img.url}
-                      alt={`profile-image-${idx + 1}`}
-                      className="h-20 w-20 shrink-0 rounded-md object-cover"
-                      width={w}
-                      height={h}
-                    />
-                  );
-                })}
-              </div>
-            </ScrollArea>
-          </section>
-        ) : null}
-
-        {current ? (
-          <section>
-            <h3 className="mb-2 text-sm font-medium text-foreground">
-              Current role
-            </h3>
-            <div className="rounded-md border p-3.5">
-              <div className="flex items-start gap-3">
-                {current.companyLogo ? (
-                  <Avatar className="size-9">
-                    <AvatarImage
-                      src={current.companyLogo}
-                      alt={current.companyName ?? 'Company logo'}
-                    />
-                    <AvatarFallback>
-                      {initialsOf(current.companyName ?? 'Company')}
-                    </AvatarFallback>
-                  </Avatar>
-                ) : current.companyName ? (
-                  <div className="size-9 shrink-0 rounded-md bg-muted text-xs font-medium flex items-center justify-center">
-                    {initialsOf(current.companyName)}
+            {profile.profilePictures?.length ? (
+              <section>
+                <h3 className="mb-2 text-sm font-medium text-foreground">
+                  Profile media
+                </h3>
+                <ScrollArea className="w-full">
+                  <div className="flex gap-3 overflow-x-auto pb-2">
+                    {profile.profilePictures
+                      .filter((img) => !!img?.url)
+                      .map((img, idx) => {
+                        const w = img.width ?? 80;
+                        const h = img.height ?? 80;
+                        return (
+                          // Using native img to avoid Next Image layout shifts for unknown remote hosts
+                          <img
+                            key={idx}
+                            src={img.url}
+                            alt={`profile-image-${idx + 1}`}
+                            className="h-20 w-20 shrink-0 rounded-md object-cover"
+                            width={w}
+                            height={h}
+                          />
+                        );
+                      })}
                   </div>
-                ) : null}
-                <div className="flex-1">
-                  <p className="font-medium">
-                    {current.title || '—'}{' '}
-                    {current.companyName ? (
-                      current.companyURL ? (
-                        <a
-                          className="text-muted-foreground hover:text-foreground underline underline-offset-4"
-                          href={current.companyURL}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          @ {current.companyName}
-                        </a>
-                      ) : (
-                        `@ ${current.companyName}`
-                      )
-                    ) : (
-                      ''
-                    )}
-                  </p>
-                  <p className="text-muted-foreground mt-1 text-sm">
-                    {[current.location, current.employmentType]
-                      .filter(Boolean)
-                      .join(' • ') || '—'}
-                  </p>
-                  <p className="text-muted-foreground mt-1 text-sm">
-                    {[
-                      formatDatePart(current.start),
-                      '–',
-                      formatDatePart(current.end) ?? 'Present',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    {(() => {
-                      const duration = calculateDuration(current.start, current.end);
-                      return duration ? <span className="text-muted-foreground/70"> · {duration}</span> : null;
-                    })()}
-                  </p>
-                  {current.description ? (
-                    <p className="mt-2 text-sm whitespace-pre-line">{current.description}</p>
-                  ) : null}
-                  <div className="text-muted-foreground mt-2 text-xs">
-                    {[
-                      current.companyIndustry,
-                      current.companyStaffCountRange
-                        ? `${current.companyStaffCountRange} employees`
-                        : undefined,
-                      current.locationType,
-                    ]
-                      .filter(Boolean)
-                      .join(' • ')}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        ) : null}
+                </ScrollArea>
+              </section>
+            ) : null}
 
-        {allExperience.length ? (
-          <section>
-            <h3 className="mb-2 text-sm font-medium text-foreground">
-              Experience
-            </h3>
-            <div className="space-y-2.5">
-              {allExperience.map((role, idx) => (
-                <div key={idx} className="rounded-md border p-3.5">
+            {current ? (
+              <section>
+                <h3 className="mb-2 text-sm font-medium text-foreground">
+                  Current role
+                </h3>
+                <div className="rounded-md border p-3.5">
                   <div className="flex items-start gap-3">
-                    {role.companyLogo ? (
+                    {current.companyLogo ? (
                       <Avatar className="size-9">
                         <AvatarImage
-                          src={role.companyLogo}
-                          alt={role.companyName ?? 'Company logo'}
+                          src={current.companyLogo}
+                          alt={current.companyName ?? 'Company logo'}
                         />
                         <AvatarFallback>
-                          {initialsOf(role.companyName ?? 'Company')}
+                          {initialsOf(current.companyName ?? 'Company')}
                         </AvatarFallback>
                       </Avatar>
-                    ) : role.companyName ? (
+                    ) : current.companyName ? (
                       <div className="size-9 shrink-0 rounded-md bg-muted text-xs font-medium flex items-center justify-center">
-                        {initialsOf(role.companyName)}
+                        {initialsOf(current.companyName)}
                       </div>
                     ) : null}
                     <div className="flex-1">
                       <p className="font-medium">
-                        {role.title || '—'}{' '}
-                        {role.companyName ? (
-                          role.companyURL ? (
+                        {current.title || '—'}{' '}
+                        {current.companyName ? (
+                          current.companyURL ? (
                             <a
                               className="text-muted-foreground hover:text-foreground underline underline-offset-4"
-                              href={role.companyURL}
+                              href={current.companyURL}
                               target="_blank"
                               rel="noopener noreferrer"
                             >
-                              @ {role.companyName}
+                              @ {current.companyName}
                             </a>
                           ) : (
-                            `@ ${role.companyName}`
+                            `@ ${current.companyName}`
                           )
                         ) : (
                           ''
                         )}
                       </p>
                       <p className="text-muted-foreground mt-1 text-sm">
+                        {[current.location, current.employmentType]
+                          .filter(Boolean)
+                          .join(' • ') || '—'}
+                      </p>
+                      <p className="text-muted-foreground mt-1 text-sm">
                         {[
-                          formatDatePart(role.start),
+                          formatDatePart(current.start),
                           '–',
-                          formatDatePart(role.end) ?? 'Present',
+                          formatDatePart(current.end) ?? 'Present',
                         ]
                           .filter(Boolean)
                           .join(' ')}
                         {(() => {
-                          const duration = calculateDuration(role.start, role.end);
-                          return duration ? <span className="text-muted-foreground/70"> · {duration}</span> : null;
+                          const duration = calculateDuration(
+                            current.start,
+                            current.end
+                          );
+                          return duration ? (
+                            <span className="text-muted-foreground/70">
+                              {' '}
+                              · {duration}
+                            </span>
+                          ) : null;
                         })()}
                       </p>
-                      <div className="text-muted-foreground mt-1 text-xs">
+                      {current.description ? (
+                        <p className="mt-2 text-sm whitespace-pre-line">
+                          {current.description}
+                        </p>
+                      ) : null}
+                      <div className="text-muted-foreground mt-2 text-xs">
                         {[
-                          role.location,
-                          role.employmentType,
-                          role.locationType,
-                          role.companyIndustry,
-                          role.companyStaffCountRange
-                            ? `${role.companyStaffCountRange} employees`
+                          current.companyIndustry,
+                          current.companyStaffCountRange
+                            ? `${current.companyStaffCountRange} employees`
                             : undefined,
+                          current.locationType,
                         ]
                           .filter(Boolean)
                           .join(' • ')}
                       </div>
-                      {role.description ? (
-                        <p className="mt-2 text-sm whitespace-pre-line">{role.description}</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {allExperience.length ? (
+              <section>
+                <h3 className="mb-2 text-sm font-medium text-foreground">
+                  Experience
+                </h3>
+                <div className="space-y-2.5">
+                  {allExperience.map((role, idx) => (
+                    <div key={idx} className="rounded-md border p-3.5">
+                      <div className="flex items-start gap-3">
+                        {role.companyLogo ? (
+                          <Avatar className="size-9">
+                            <AvatarImage
+                              src={role.companyLogo}
+                              alt={role.companyName ?? 'Company logo'}
+                            />
+                            <AvatarFallback>
+                              {initialsOf(role.companyName ?? 'Company')}
+                            </AvatarFallback>
+                          </Avatar>
+                        ) : role.companyName ? (
+                          <div className="size-9 shrink-0 rounded-md bg-muted text-xs font-medium flex items-center justify-center">
+                            {initialsOf(role.companyName)}
+                          </div>
+                        ) : null}
+                        <div className="flex-1">
+                          <p className="font-medium">
+                            {role.title || '—'}{' '}
+                            {role.companyName ? (
+                              role.companyURL ? (
+                                <a
+                                  className="text-muted-foreground hover:text-foreground underline underline-offset-4"
+                                  href={role.companyURL}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  @ {role.companyName}
+                                </a>
+                              ) : (
+                                `@ ${role.companyName}`
+                              )
+                            ) : (
+                              ''
+                            )}
+                          </p>
+                          <p className="text-muted-foreground mt-1 text-sm">
+                            {[
+                              formatDatePart(role.start),
+                              '–',
+                              formatDatePart(role.end) ?? 'Present',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                            {(() => {
+                              const duration = calculateDuration(
+                                role.start,
+                                role.end
+                              );
+                              return duration ? (
+                                <span className="text-muted-foreground/70">
+                                  {' '}
+                                  · {duration}
+                                </span>
+                              ) : null;
+                            })()}
+                          </p>
+                          <div className="text-muted-foreground mt-1 text-xs">
+                            {[
+                              role.location,
+                              role.employmentType,
+                              role.locationType,
+                              role.companyIndustry,
+                              role.companyStaffCountRange
+                                ? `${role.companyStaffCountRange} employees`
+                                : undefined,
+                            ]
+                              .filter(Boolean)
+                              .join(' • ')}
+                          </div>
+                          {role.description ? (
+                            <p className="mt-2 text-sm whitespace-pre-line">
+                              {role.description}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {skills.length ? (
+              <>
+                <Separator />
+                <section>
+                  <h3 className="mb-2 text-sm font-medium text-foreground">
+                    Skills{' '}
+                    {skills.length > 0 && (
+                      <span className="text-muted-foreground font-normal">
+                        ({skills.length})
+                      </span>
+                    )}
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {skills.map((skill, i) => (
+                      <Badge
+                        key={i}
+                        variant={
+                          skill.passedSkillAssessment ? 'default' : 'outline'
+                        }
+                        className="gap-1.5"
+                      >
+                        {skill.name}
+                        {skill.endorsementsCount &&
+                        skill.endorsementsCount > 0 ? (
+                          <span className="bg-background/20 rounded px-1 py-0.5 text-[10px] font-semibold">
+                            {skill.endorsementsCount}
+                          </span>
+                        ) : null}
+                      </Badge>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : null}
+
+            {educations.length ? (
+              <>
+                <Separator />
+                <section>
+                  <h3 className="mb-2 text-sm font-medium text-foreground">
+                    Education
+                  </h3>
+                  <div className="space-y-2.5">
+                    {educations.map((edu, idx) => (
+                      <div key={idx} className="rounded-md border p-3.5">
+                        <div className="flex items-start gap-3">
+                          {(() => {
+                            const schoolLogo = (edu.logo || [])?.find?.(
+                              (l) => !!l?.url
+                            )?.url;
+                            return schoolLogo ? (
+                              <Avatar className="size-9">
+                                <AvatarImage
+                                  src={schoolLogo}
+                                  alt={edu.schoolName ?? 'School logo'}
+                                />
+                                <AvatarFallback>
+                                  {initialsOf(edu.schoolName ?? 'School')}
+                                </AvatarFallback>
+                              </Avatar>
+                            ) : edu.schoolName ? (
+                              <div className="size-9 shrink-0 rounded-md bg-muted text-xs font-medium flex items-center justify-center">
+                                {initialsOf(edu.schoolName)}
+                              </div>
+                            ) : null;
+                          })()}
+                          <div className="flex-1">
+                            <p className="font-medium">
+                              {edu.schoolName || '—'}
+                              {edu.degree ? (
+                                <span className="text-muted-foreground">
+                                  {' '}
+                                  • {edu.degree}
+                                </span>
+                              ) : null}
+                              {edu.fieldOfStudy ? (
+                                <span className="text-muted-foreground">
+                                  , {edu.fieldOfStudy}
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="text-muted-foreground mt-1 text-sm">
+                              {[
+                                formatDatePart(edu.start),
+                                '–',
+                                formatDatePart(edu.end) ?? undefined,
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                            </p>
+                            {edu.grade ? (
+                              <p className="text-muted-foreground mt-1 text-xs">
+                                Grade: {edu.grade}
+                              </p>
+                            ) : null}
+                            {edu.activities ? (
+                              <p className="mt-2 text-sm">{edu.activities}</p>
+                            ) : null}
+                            {edu.description ? (
+                              <p className="text-muted-foreground mt-1 text-sm">
+                                {edu.description}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : null}
+
+            {languages.length ? (
+              <>
+                <Separator />
+                <section>
+                  <h3 className="mb-2 text-sm font-medium text-foreground">
+                    Languages
+                  </h3>
+                  <div className="flex flex-wrap gap-3">
+                    {languages.map((lang, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2 rounded-md border px-3 py-2"
+                      >
+                        <span className="font-medium">{lang.name || '—'}</span>
+                        <span className="text-muted-foreground text-sm">
+                          {formatProficiency(lang.proficiency)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : null}
+
+            <Accordion
+              type="multiple"
+              className="rounded-md border"
+              defaultValue={['meta']}
+            >
+              <AccordionItem value="certs">
+                <AccordionTrigger>Certifications</AccordionTrigger>
+                <AccordionContent>
+                  {Array.isArray(profile.certifications) &&
+                  profile.certifications.length ? (
+                    <div className="space-y-2.5">
+                      {profile.certifications.map((c, i) => {
+                        const name = c.name ?? c.title ?? 'Certification';
+                        const issuer = c.issuer;
+                        const date =
+                          c.date ??
+                          c.issued ??
+                          (typeof c.year === 'number'
+                            ? String(c.year)
+                            : c.year);
+                        return (
+                          <div key={i} className="rounded-md border p-3.5">
+                            <p className="font-medium">{name}</p>
+                            {issuer ? (
+                              <p className="text-muted-foreground mt-1 text-sm">
+                                Issuer: {issuer}
+                              </p>
+                            ) : null}
+                            {date ? (
+                              <p className="text-muted-foreground mt-1 text-xs">
+                                {date}
+                              </p>
+                            ) : null}
+                            <pre className="bg-muted mt-2 overflow-x-auto rounded p-2 text-xs">
+                              {JSON.stringify(c, null, 2)}
+                            </pre>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : profile.certifications ? (
+                    <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
+                      {JSON.stringify(profile.certifications, null, 2)}
+                    </pre>
+                  ) : (
+                    <p className="text-muted-foreground text-sm">
+                      No certifications
+                    </p>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="projects">
+                <AccordionTrigger>Projects</AccordionTrigger>
+                <AccordionContent>
+                  {projectItems.length ? (
+                    <div className="space-y-2.5">
+                      {projectItems.map((p, i) => {
+                        const name = p.name ?? p.title ?? 'Project';
+                        const description = p.description;
+                        const url = p.url;
+                        // Contributors are not in the schema, so we handle them as unknown
+                        const contributors: unknown[] = Array.isArray(
+                          (p as Record<string, unknown>).contributors
+                        )
+                          ? ((p as Record<string, unknown>)
+                              .contributors as unknown[])
+                          : [];
+                        return (
+                          <div key={i} className="rounded-md border p-3.5">
+                            <p className="font-medium">
+                              {name}{' '}
+                              {url ? (
+                                <a
+                                  className="text-muted-foreground hover:text-foreground underline underline-offset-4"
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  (link)
+                                </a>
+                              ) : null}
+                            </p>
+                            {description ? (
+                              <p className="text-muted-foreground mt-1 text-sm">
+                                {description}
+                              </p>
+                            ) : null}
+                            {contributors.length ? (
+                              <div className="mt-3">
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                  Contributors
+                                </p>
+                                <div className="mt-1 flex -space-x-2">
+                                  {contributors.slice(0, 8).map((c, ci) => {
+                                    const contributor = c as Record<
+                                      string,
+                                      unknown
+                                    >;
+                                    const pictures = Array.isArray(
+                                      contributor.profilePicture
+                                    )
+                                      ? (contributor.profilePicture as Array<{
+                                          url?: string;
+                                        }>)
+                                      : [];
+                                    const picUrl = pictures.find(
+                                      (pp) => !!pp?.url
+                                    )?.url;
+                                    const displayName =
+                                      (typeof contributor.fullName === 'string'
+                                        ? contributor.fullName
+                                        : undefined) ||
+                                      [
+                                        typeof contributor.firstName ===
+                                        'string'
+                                          ? contributor.firstName
+                                          : undefined,
+                                        typeof contributor.lastName === 'string'
+                                          ? contributor.lastName
+                                          : undefined,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(' ') ||
+                                      (typeof contributor.username === 'string'
+                                        ? contributor.username
+                                        : undefined) ||
+                                      'User';
+                                    return (
+                                      <Avatar
+                                        key={ci}
+                                        className="size-7 ring-2 ring-background"
+                                        title={displayName}
+                                      >
+                                        {picUrl ? (
+                                          <AvatarImage
+                                            src={picUrl}
+                                            alt={displayName}
+                                          />
+                                        ) : null}
+                                        <AvatarFallback>
+                                          {initialsOf(displayName)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : profile.projects ? (
+                    <p className="text-muted-foreground text-sm">
+                      Projects are present but could not be parsed.
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground text-sm">No projects</p>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="i18n">
+                <AccordionTrigger>Internationalization</AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Supported locales
+                      </p>
+                      {Array.isArray(profile.supportedLocales) &&
+                      profile.supportedLocales.length ? (
+                        <ul className="mt-1 list-inside list-disc text-sm">
+                          {profile.supportedLocales.map((loc, i) => (
+                            <li key={i}>
+                              {typeof loc === 'string'
+                                ? loc
+                                : JSON.stringify(loc)}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-muted-foreground text-sm">—</p>
+                      )}
+                    </div>
+                    <div className="sm:col-span-1">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Multi-locale fields
+                      </p>
+                      <div className="mt-1 space-y-2 text-sm">
+                        {profile.multiLocaleFirstName ? (
+                          <div>
+                            <p className="text-muted-foreground text-xs">
+                              First name
+                            </p>
+                            <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
+                              {JSON.stringify(
+                                profile.multiLocaleFirstName,
+                                null,
+                                2
+                              )}
+                            </pre>
+                          </div>
+                        ) : null}
+                        {profile.multiLocaleLastName ? (
+                          <div>
+                            <p className="text-muted-foreground text-xs">
+                              Last name
+                            </p>
+                            <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
+                              {JSON.stringify(
+                                profile.multiLocaleLastName,
+                                null,
+                                2
+                              )}
+                            </pre>
+                          </div>
+                        ) : null}
+                        {profile.multiLocaleHeadline ? (
+                          <div>
+                            <p className="text-muted-foreground text-xs">
+                              Headline
+                            </p>
+                            <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
+                              {JSON.stringify(
+                                profile.multiLocaleHeadline,
+                                null,
+                                2
+                              )}
+                            </pre>
+                          </div>
+                        ) : null}
+                        {profile.multiLocaleSummary ? (
+                          <div>
+                            <p className="text-muted-foreground text-xs">
+                              Summary
+                            </p>
+                            <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
+                              {JSON.stringify(
+                                profile.multiLocaleSummary,
+                                null,
+                                2
+                              )}
+                            </pre>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="meta">
+                <AccordionTrigger>Profile metadata</AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <div className="rounded-md border p-3.5">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        ID
+                      </p>
+                      <p className="text-sm">{profile.id ?? '—'}</p>
+                    </div>
+                    <div className="rounded-md border p-3.5">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        URN
+                      </p>
+                      <p className="text-sm break-all">{profile.urn ?? '—'}</p>
+                    </div>
+                    <div className="rounded-md border p-3.5">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Username
+                      </p>
+                      <p className="text-sm">{profile.username}</p>
+                    </div>
+                    <div className="rounded-md border p-3.5">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Geo
+                      </p>
+                      <p className="text-sm">
+                        {profile.geo?.full ||
+                          [profile.geo?.city, profile.geo?.country]
+                            .filter(Boolean)
+                            .join(', ') ||
+                          '—'}
+                      </p>
+                      {profile.geo?.countryCode ? (
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          Code: {profile.geo?.countryCode}
+                        </p>
                       ) : null}
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {skills.length ? (
-          <>
-            <Separator />
-            <section>
-              <h3 className="mb-2 text-sm font-medium text-foreground">
-                Skills {skills.length > 0 && <span className="text-muted-foreground font-normal">({skills.length})</span>}
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {skills.map((skill, i) => (
-                  <Badge 
-                    key={i} 
-                    variant={skill.passedSkillAssessment ? 'default' : 'outline'}
-                    className="gap-1.5"
-                  >
-                    {skill.name}
-                    {skill.endorsementsCount && skill.endorsementsCount > 0 ? (
-                      <span className="bg-background/20 rounded px-1 py-0.5 text-[10px] font-semibold">
-                        {skill.endorsementsCount}
-                      </span>
-                    ) : null}
-                  </Badge>
-                ))}
-              </div>
-            </section>
-          </>
-        ) : null}
-
-        {educations.length ? (
-          <>
-            <Separator />
-            <section>
-              <h3 className="mb-2 text-sm font-medium text-foreground">
-                Education
-              </h3>
-              <div className="space-y-2.5">
-                {educations.map((edu, idx) => (
-                  <div key={idx} className="rounded-md border p-3.5">
-                    <div className="flex items-start gap-3">
-                      {(() => {
-                        const schoolLogo =
-                          (edu.logo || [])?.find?.((l) => !!l?.url)?.url;
-                        return schoolLogo ? (
-                          <Avatar className="size-9">
-                            <AvatarImage
-                              src={schoolLogo}
-                              alt={edu.schoolName ?? 'School logo'}
-                            />
-                            <AvatarFallback>
-                              {initialsOf(edu.schoolName ?? 'School')}
-                            </AvatarFallback>
-                          </Avatar>
-                        ) : edu.schoolName ? (
-                          <div className="size-9 shrink-0 rounded-md bg-muted text-xs font-medium flex items-center justify-center">
-                            {initialsOf(edu.schoolName)}
-                          </div>
-                        ) : null;
-                      })()}
-                      <div className="flex-1">
-                        <p className="font-medium">
-                          {edu.schoolName || '—'}
-                          {edu.degree ? (
-                            <span className="text-muted-foreground">
-                              {' '}
-                              • {edu.degree}
-                            </span>
-                          ) : null}
-                          {edu.fieldOfStudy ? (
-                            <span className="text-muted-foreground">
-                              , {edu.fieldOfStudy}
-                            </span>
-                          ) : null}
-                        </p>
-                        <p className="text-muted-foreground mt-1 text-sm">
-                          {[
-                            formatDatePart(edu.start),
-                            '–',
-                            formatDatePart(edu.end) ?? undefined,
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                        </p>
-                        {edu.grade ? (
-                          <p className="text-muted-foreground mt-1 text-xs">
-                            Grade: {edu.grade}
-                          </p>
-                        ) : null}
-                        {edu.activities ? (
-                          <p className="mt-2 text-sm">{edu.activities}</p>
-                        ) : null}
-                        {edu.description ? (
-                          <p className="text-muted-foreground mt-1 text-sm">
-                            {edu.description}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </>
-        ) : null}
-
-        {languages.length ? (
-          <>
-            <Separator />
-            <section>
-              <h3 className="mb-2 text-sm font-medium text-foreground">
-                Languages
-              </h3>
-              <div className="flex flex-wrap gap-3">
-                {languages.map((lang, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-md border px-3 py-2">
-                    <span className="font-medium">{lang.name || '—'}</span>
-                    <span className="text-muted-foreground text-sm">
-                      {formatProficiency(lang.proficiency)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </>
-        ) : null}
-
-        <Accordion
-          type="multiple"
-          className="rounded-md border"
-          defaultValue={['meta']}
-        >
-          <AccordionItem value="certs">
-            <AccordionTrigger>Certifications</AccordionTrigger>
-            <AccordionContent>
-              {Array.isArray(profile.certifications) &&
-              profile.certifications.length ? (
-                <div className="space-y-2.5">
-                  {profile.certifications.map((c, i) => {
-                    const name = c.name ?? c.title ?? 'Certification';
-                    const issuer = c.issuer;
-                    const date =
-                      c.date ??
-                      c.issued ??
-                      (typeof c.year === 'number' ? String(c.year) : c.year);
-                    return (
-                      <div key={i} className="rounded-md border p-3.5">
-                        <p className="font-medium">{name}</p>
-                        {issuer ? (
-                          <p className="text-muted-foreground mt-1 text-sm">
-                            Issuer: {issuer}
-                          </p>
-                        ) : null}
-                        {date ? (
-                          <p className="text-muted-foreground mt-1 text-xs">
-                            {date}
-                          </p>
-                        ) : null}
-                        <pre className="bg-muted mt-2 overflow-x-auto rounded p-2 text-xs">
-                          {JSON.stringify(c, null, 2)}
-                        </pre>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : profile.certifications ? (
-                <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
-                  {JSON.stringify(profile.certifications, null, 2)}
-                </pre>
-              ) : (
-                <p className="text-muted-foreground text-sm">
-                  No certifications
-                </p>
-              )}
-            </AccordionContent>
-          </AccordionItem>
-
-          <AccordionItem value="projects">
-            <AccordionTrigger>Projects</AccordionTrigger>
-            <AccordionContent>
-              {projectItems.length ? (
-                <div className="space-y-2.5">
-                  {projectItems.map((p: any, i: number) => {
-                    const name = p.name ?? p.title ?? 'Project';
-                    const description = p.description;
-                    const url = p.url as string | undefined;
-                    const contributors: any[] = Array.isArray(p.contributors)
-                      ? p.contributors
-                      : [];
-                    return (
-                      <div key={i} className="rounded-md border p-3.5">
-                        <p className="font-medium">
-                          {name}{' '}
-                          {url ? (
-                            <a
-                              className="text-muted-foreground hover:text-foreground underline underline-offset-4"
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              (link)
-                            </a>
-                          ) : null}
-                        </p>
-                        {description ? (
-                          <p className="text-muted-foreground mt-1 text-sm">
-                            {description}
-                          </p>
-                        ) : null}
-                        {contributors.length ? (
-                          <div className="mt-3">
-                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              Contributors
-                            </p>
-                            <div className="mt-1 flex -space-x-2">
-                              {contributors.slice(0, 8).map((c, ci) => {
-                                const pictures = Array.isArray(
-                                  c.profilePicture
-                                )
-                                  ? (c.profilePicture as any[])
-                                  : [];
-                                const picUrl =
-                                  pictures.find((pp) => !!pp?.url)?.url;
-                                const displayName =
-                                  c.fullName ||
-                                  [c.firstName, c.lastName]
-                                    .filter(Boolean)
-                                    .join(' ') ||
-                                  c.username ||
-                                  'User';
-                                return (
-                                  <Avatar
-                                    key={ci}
-                                    className="size-7 ring-2 ring-background"
-                                    title={displayName}
-                                  >
-                                    {picUrl ? (
-                                      <AvatarImage
-                                        src={picUrl}
-                                        alt={displayName}
-                                      />
-                                    ) : null}
-                                    <AvatarFallback>
-                                      {initialsOf(displayName)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (profile as any).projects ? (
-                <p className="text-muted-foreground text-sm">
-                  Projects are present but could not be parsed.
-                </p>
-              ) : (
-                <p className="text-muted-foreground text-sm">No projects</p>
-              )}
-            </AccordionContent>
-          </AccordionItem>
-
-          <AccordionItem value="i18n">
-            <AccordionTrigger>Internationalization</AccordionTrigger>
-            <AccordionContent>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Supported locales
-                  </p>
-                  {Array.isArray(profile.supportedLocales) &&
-                  profile.supportedLocales.length ? (
-                    <ul className="mt-1 list-inside list-disc text-sm">
-                      {profile.supportedLocales.map((loc, i) => (
-                        <li key={i}>
-                          {typeof loc === 'string' ? loc : JSON.stringify(loc)}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-muted-foreground text-sm">—</p>
-                  )}
-                </div>
-                <div className="sm:col-span-1">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Multi-locale fields
-                  </p>
-                  <div className="mt-1 space-y-2 text-sm">
-                    {profile.multiLocaleFirstName ? (
-                      <div>
-                        <p className="text-muted-foreground text-xs">
-                          First name
-                        </p>
-                        <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
-                          {JSON.stringify(
-                            profile.multiLocaleFirstName,
-                            null,
-                            2
-                          )}
-                        </pre>
-                      </div>
-                    ) : null}
-                    {profile.multiLocaleLastName ? (
-                      <div>
-                        <p className="text-muted-foreground text-xs">
-                          Last name
-                        </p>
-                        <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
-                          {JSON.stringify(profile.multiLocaleLastName, null, 2)}
-                        </pre>
-                      </div>
-                    ) : null}
-                    {profile.multiLocaleHeadline ? (
-                      <div>
-                        <p className="text-muted-foreground text-xs">
-                          Headline
-                        </p>
-                        <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
-                          {JSON.stringify(profile.multiLocaleHeadline, null, 2)}
-                        </pre>
-                      </div>
-                    ) : null}
-                    {(profile as any).multiLocaleSummary ? (
-                      <div>
-                        <p className="text-muted-foreground text-xs">
-                          Summary
-                        </p>
-                        <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
-                          {JSON.stringify((profile as any).multiLocaleSummary, null, 2)}
-                        </pre>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-
-          <AccordionItem value="meta">
-            <AccordionTrigger>Profile metadata</AccordionTrigger>
-            <AccordionContent>
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                <div className="rounded-md border p-3.5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    ID
-                  </p>
-                  <p className="text-sm">{profile.id ?? '—'}</p>
-                </div>
-                <div className="rounded-md border p-3.5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    URN
-                  </p>
-                  <p className="text-sm break-all">{profile.urn ?? '—'}</p>
-                </div>
-                <div className="rounded-md border p-3.5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Username
-                  </p>
-                  <p className="text-sm">{profile.username}</p>
-                </div>
-                <div className="rounded-md border p-3.5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Geo
-                  </p>
-                  <p className="text-sm">
-                    {profile.geo?.full ||
-                      [profile.geo?.city, profile.geo?.country]
-                        .filter(Boolean)
-                        .join(', ') ||
-                      '—'}
-                  </p>
-                  {profile.geo?.countryCode ? (
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      Code: {profile.geo?.countryCode}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </>
         )}
       </CardContent>
