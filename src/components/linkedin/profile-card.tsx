@@ -19,14 +19,6 @@ import {
 } from '~/components/ui/card';
 import { ScrollArea } from '~/components/ui/scroll-area';
 import { Separator } from '~/components/ui/separator';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '~/components/ui/table';
 import type { LinkedInRawProfile } from '~/lib/linkedin/schema';
 
 function initialsOf(name: string): string {
@@ -41,6 +33,42 @@ function formatDatePart(
   if (!d || !d.year) return undefined;
   const month = d.month ? String(d.month).padStart(2, '0') : undefined;
   return month ? `${d.year}-${month}` : String(d.year);
+}
+
+function formatProficiency(proficiency?: string): string {
+  if (!proficiency) return '—';
+  // Convert FULL_PROFESSIONAL or NATIVE_OR_BILINGUAL to "Full Professional" or "Native / Bilingual"
+  return proficiency
+    .replace(/_/g, ' ')
+    .replace(/\bOR\b/gi, '/')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function calculateDuration(
+  start?: { year?: number; month?: number; day?: number } | null,
+  end?: { year?: number; month?: number; day?: number } | null
+): string | undefined {
+  if (!start?.year) return undefined;
+  
+  const startDate = new Date(start.year, (start.month || 1) - 1, start.day || 1);
+  const endDate = end?.year && end.year > 0
+    ? new Date(end.year, (end.month || 1) - 1, end.day || 1)
+    : new Date();
+  
+  const diffMs = endDate.getTime() - startDate.getTime();
+  const diffMonths = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30.44));
+  
+  if (diffMonths < 1) return 'Less than a month';
+  
+  const years = Math.floor(diffMonths / 12);
+  const months = diffMonths % 12;
+  
+  const parts: string[] = [];
+  if (years > 0) parts.push(`${years} yr${years > 1 ? 's' : ''}`);
+  if (months > 0) parts.push(`${months} mo${months > 1 ? 's' : ''}`);
+  
+  return parts.join(' ');
 }
 
 export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
@@ -78,9 +106,7 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
 
   const current = positions.find((p) => !p.end?.year);
   const allExperience = positions;
-  const skills = (profile.skills ?? [])
-    .map((s) => s?.name?.trim())
-    .filter(Boolean) as string[];
+  const skills = (profile.skills ?? []).filter((s) => s?.name?.trim());
   const educations = profile.educations ?? [];
   const languages = profile.languages ?? [];
   const projectItems =
@@ -243,15 +269,19 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
                     ]
                       .filter(Boolean)
                       .join(' ')}
+                    {(() => {
+                      const duration = calculateDuration(current.start, current.end);
+                      return duration ? <span className="text-muted-foreground/70"> · {duration}</span> : null;
+                    })()}
                   </p>
                   {current.description ? (
-                    <p className="mt-2 text-sm">{current.description}</p>
+                    <p className="mt-2 text-sm whitespace-pre-line">{current.description}</p>
                   ) : null}
                   <div className="text-muted-foreground mt-2 text-xs">
                     {[
                       current.companyIndustry,
                       current.companyStaffCountRange
-                        ? `Staff: ${current.companyStaffCountRange}`
+                        ? `${current.companyStaffCountRange} employees`
                         : undefined,
                       current.locationType,
                     ]
@@ -316,6 +346,10 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
                         ]
                           .filter(Boolean)
                           .join(' ')}
+                        {(() => {
+                          const duration = calculateDuration(role.start, role.end);
+                          return duration ? <span className="text-muted-foreground/70"> · {duration}</span> : null;
+                        })()}
                       </p>
                       <div className="text-muted-foreground mt-1 text-xs">
                         {[
@@ -323,12 +357,15 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
                           role.employmentType,
                           role.locationType,
                           role.companyIndustry,
+                          role.companyStaffCountRange
+                            ? `${role.companyStaffCountRange} employees`
+                            : undefined,
                         ]
                           .filter(Boolean)
                           .join(' • ')}
                       </div>
                       {role.description ? (
-                        <p className="mt-2 text-sm">{role.description}</p>
+                        <p className="mt-2 text-sm whitespace-pre-line">{role.description}</p>
                       ) : null}
                     </div>
                   </div>
@@ -343,12 +380,21 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
             <Separator />
             <section>
               <h3 className="mb-2 text-sm font-medium text-foreground">
-                Skills
+                Skills {skills.length > 0 && <span className="text-muted-foreground font-normal">({skills.length})</span>}
               </h3>
               <div className="flex flex-wrap gap-2">
-                {skills.map((name, i) => (
-                  <Badge key={i} variant="outline">
-                    {name}
+                {skills.map((skill, i) => (
+                  <Badge 
+                    key={i} 
+                    variant={skill.passedSkillAssessment ? 'default' : 'outline'}
+                    className="gap-1.5"
+                  >
+                    {skill.name}
+                    {skill.endorsementsCount && skill.endorsementsCount > 0 ? (
+                      <span className="bg-background/20 rounded px-1 py-0.5 text-[10px] font-semibold">
+                        {skill.endorsementsCount}
+                      </span>
+                    ) : null}
                   </Badge>
                 ))}
               </div>
@@ -439,24 +485,16 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
               <h3 className="mb-2 text-sm font-medium text-foreground">
                 Languages
               </h3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Proficiency</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {languages.map((lang, i) => (
-                    <TableRow key={i}>
-                      <TableCell>{lang.name || '—'}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {lang.proficiency || '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="flex flex-wrap gap-3">
+                {languages.map((lang, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-md border px-3 py-2">
+                    <span className="font-medium">{lang.name || '—'}</span>
+                    <span className="text-muted-foreground text-sm">
+                      {formatProficiency(lang.proficiency)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </section>
           </>
         ) : null}
@@ -656,6 +694,16 @@ export function ProfileCard({ profile }: { profile: LinkedInRawProfile }) {
                         </p>
                         <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
                           {JSON.stringify(profile.multiLocaleHeadline, null, 2)}
+                        </pre>
+                      </div>
+                    ) : null}
+                    {(profile as any).multiLocaleSummary ? (
+                      <div>
+                        <p className="text-muted-foreground text-xs">
+                          Summary
+                        </p>
+                        <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">
+                          {JSON.stringify((profile as any).multiLocaleSummary, null, 2)}
                         </pre>
                       </div>
                     ) : null}

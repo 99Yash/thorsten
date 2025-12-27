@@ -46,6 +46,14 @@ const projectsCollectionSchema = z
   })
   .loose();
 
+const skillSchema = z
+  .object({
+    name: z.string().optional(),
+    passedSkillAssessment: z.boolean().optional(),
+    endorsementsCount: z.number().int().optional(),
+  })
+  .loose();
+
 const educationSchema = z.object({
   start: datePartSchema.optional(),
   end: datePartSchema.optional(),
@@ -101,15 +109,7 @@ export const LinkedInRawProfileSchema = z
         countryCode: z.string().optional(),
       })
       .optional(),
-    skills: z
-      .array(
-        z
-          .object({
-            name: z.string().optional(),
-          })
-          .loose()
-      )
-      .optional(),
+    skills: z.array(skillSchema).optional(),
     educations: z.array(educationSchema).optional(),
     position: z.array(positionSchema).optional(),
     fullPositions: z.array(positionSchema).optional(),
@@ -133,6 +133,7 @@ export const LinkedInRawProfileSchema = z
     multiLocaleFirstName: z.record(z.string(), z.string()).optional(),
     multiLocaleLastName: z.record(z.string(), z.string()).optional(),
     multiLocaleHeadline: z.record(z.string(), z.string()).optional(),
+    multiLocaleSummary: z.record(z.string(), z.string()).optional(),
   })
   .partial()
   .loose();
@@ -140,3 +141,4 @@ export const LinkedInRawProfileSchema = z
 export type LinkedInRawProfile = z.infer<typeof LinkedInRawProfileSchema>;
 export type LinkedInCertification = z.infer<typeof certificationSchema>;
 export type LinkedInProject = z.infer<typeof projectSchema>;
+export type LinkedInSkill = z.infer<typeof skillSchema>;
