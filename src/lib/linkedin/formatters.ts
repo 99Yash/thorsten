@@ -18,7 +18,6 @@ export function formatDatePart(
 
 export function formatProficiency(proficiency?: string): string {
   if (!proficiency) return '—';
-  // Convert FULL_PROFESSIONAL or NATIVE_OR_BILINGUAL to "Full Professional" or "Native / Bilingual"
   return proficiency
     .replace(/_/g, ' ')
     .replace(/\bOR\b/gi, '/')
@@ -42,9 +41,11 @@ export function calculateDuration(
       ? new Date(end.year, (end.month || 1) - 1, end.day || 1)
       : new Date();
 
-  // Validate date range: end date should not be before start date
   if (endDate.getTime() < startDate.getTime()) {
-    return undefined; // Invalid date range - return undefined to indicate invalid data
+    // End date is before start date: treat this as invalid data rather than a negative
+    // or zero duration. Callers rely on `undefined` here to avoid displaying an
+    // incorrect duration for inconsistent date ranges.
+    return undefined;
   }
 
   const diffMs = endDate.getTime() - startDate.getTime();
@@ -70,7 +71,8 @@ export function formatRelativeTime(dateString: string): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
 
-  // Handle future dates
+  // Handle future dates explicitly so we don't show confusing negative-relative
+  // times like "-3 days ago" when the given date is after the current time.
   if (diffMs < 0) {
     return 'In the future';
   }

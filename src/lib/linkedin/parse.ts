@@ -51,11 +51,11 @@ export function extractLinkedInUsername(raw: string): string | null {
       return parts[inIdx + 1];
     }
   } catch (err) {
-    // Log parsing errors in development for debugging
+    // Log parse errors only in development to aid debugging while keeping
+    // production logs clean from noisy failures caused by malformed input.
     if (process.env.NODE_ENV === 'development') {
       console.warn('[LinkedIn][parse] Failed to parse URL:', input, err);
     }
-    // Return null for invalid URLs (expected behavior)
   }
 
   return null;

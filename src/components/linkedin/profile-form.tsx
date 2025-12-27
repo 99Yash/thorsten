@@ -1,6 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Plus } from 'lucide-react';
 import { useQueryState } from 'nuqs';
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
@@ -26,6 +27,7 @@ import {
   FormMessage,
 } from '~/components/ui/form';
 import { Input } from '~/components/ui/input';
+import { Modal } from '~/components/ui/modal';
 import { Skeleton } from '~/components/ui/skeleton';
 import {
   extractLinkedInUsername,
@@ -73,6 +75,7 @@ export function ProfileForm() {
   const [lastAnalysedAt, setLastAnalysedAt] = React.useState<string | null>(
     null
   );
+  const [showModal, setShowModal] = React.useState(false);
   const lastFetchedUsernameRef = React.useRef<string | null>(null);
 
   const form = useForm<FormValues>({
@@ -81,7 +84,6 @@ export function ProfileForm() {
     mode: 'onTouched',
   });
 
-  // Sync form input with URL parameter (only when URL changes externally)
   React.useEffect(() => {
     if (usernameParam) {
       const currentInput = form.getValues().input;
@@ -95,16 +97,26 @@ export function ProfileForm() {
     }
   }, [usernameParam, form]);
 
-  // Auto-fetch profile when username is in URL (on mount or URL change)
+  // Auto-fetch profiles when a ?username=... query parameter is present.
+  // 
+  // This effect runs whenever the URL `username` query param changes. If the
+  // value looks like a valid LinkedIn username, we normalise it (via
+  // `extractLinkedInUsername`) and trigger `fetchProfile` exactly once for
+  // each distinct username. The `lastFetchedUsernameRef` guard prevents
+  // redundant refetches when the same username is already loaded (for example,
+  // when the component remounts or the input field is updated programmatically).
+  //
+  // When the `username` query param is cleared, we reset the currently shown
+  // profile and its analysis timestamp. The dependency array is intentionally
+  // limited to `[usernameParam]` so that form or state updates inside this
+  // effect do not cause additional, unintended fetches.
   React.useEffect(() => {
     if (usernameParam && isLikelyUsername(usernameParam)) {
       const extracted = extractLinkedInUsername(usernameParam) ?? usernameParam;
-      // Only fetch if this is a different username than we last fetched
       if (extracted !== lastFetchedUsernameRef.current) {
         fetchProfile({ input: usernameParam }, false);
       }
     } else if (!usernameParam) {
-      // URL was cleared, clear profile
       setProfile(null);
       setLastAnalysedAt(null);
       lastFetchedUsernameRef.current = null;
@@ -124,10 +136,10 @@ export function ProfileForm() {
         throw new Error('Invalid LinkedIn username');
       }
 
-      // Update ref first to prevent duplicate fetches
       lastFetchedUsernameRef.current = username;
 
-      // Update URL with the username
+      // Update the `username` query parameter in the URL so the current
+      // analysed username is reflected in navigation and other effects.
       await setUsernameParam(username);
 
       const res = await fetch('/api/linkedin', {
@@ -141,11 +153,11 @@ export function ProfileForm() {
       }
       setProfile(data.data as LinkedInRawProfile);
       setLastAnalysedAt(data.lastAnalysedAt || null);
+      setShowModal(false);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Something went wrong';
       toast.error('Could not fetch LinkedIn profile', { description: message });
-      // Clear URL on error
       await setUsernameParam(null);
       lastFetchedUsernameRef.current = null;
     } finally {
@@ -159,51 +171,63 @@ export function ProfileForm() {
 
   return (
     <div className="w-full max-w-7xl">
-      <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
-        {/* Form Card - Left Side */}
-        <Card className="lg:self-start lg:sticky lg:top-6">
-          <CardHeader className="text-left">
-            <CardTitle>Import LinkedIn profile</CardTitle>
-            <CardDescription>
-              Paste a LinkedIn personal profile URL or username.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-4"
-              >
-                <FormField
-                  control={form.control}
-                  name="input"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>LinkedIn URL or username</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="linkedin.com/in/jane-doe"
-                          autoComplete="off"
-                          inputMode="url"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription className="text-xs">
-                        Client-side validation only.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" disabled={loading} className="w-full">
-                  {loading ? 'Fetching…' : 'Fetch profile'}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
+      <div className="space-y-6">
+        <div className="flex items-center justify-end">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setShowModal(true)}
+            className="gap-2"
+          >
+            <Plus className="size-4" />
+            Import LinkedIn profile
+          </Button>
+        </div>
 
-        {/* Profile Card - Right Side */}
+        <Modal showModal={showModal} setShowModal={setShowModal}>
+          <Card className="border-0 shadow-none">
+            <CardHeader className="text-left">
+              <CardTitle>Import LinkedIn profile</CardTitle>
+              <CardDescription>
+                Paste a LinkedIn personal profile URL or username.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-4"
+                >
+                  <FormField
+                    control={form.control}
+                    name="input"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>LinkedIn URL or username</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="linkedin.com/in/jane-doe"
+                            autoComplete="off"
+                            inputMode="url"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs">
+                          Client-side validation only.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" disabled={loading} className="w-full">
+                    {loading ? 'Fetching…' : 'Fetch profile'}
+                  </Button>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        </Modal>
+
         <div className="min-h-[200px]">
           {loading ? (
             <div className="space-y-4">
