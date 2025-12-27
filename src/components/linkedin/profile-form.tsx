@@ -1,6 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useQueryState } from 'nuqs';
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -63,17 +64,53 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export function ProfileForm() {
+  const [usernameParam, setUsernameParam] = useQueryState('username', {
+    defaultValue: '',
+    clearOnDefault: true,
+  });
   const [loading, setLoading] = React.useState(false);
   const [profile, setProfile] = React.useState<LinkedInRawProfile | null>(null);
   const [lastAnalysedAt, setLastAnalysedAt] = React.useState<string | null>(
     null
   );
+  const lastFetchedUsernameRef = React.useRef<string | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { input: '' },
     mode: 'onTouched',
   });
+
+  // Sync form input with URL parameter (only when URL changes externally)
+  React.useEffect(() => {
+    if (usernameParam) {
+      const currentInput = form.getValues().input;
+      const extracted = extractLinkedInUsername(usernameParam) ?? usernameParam;
+      if (
+        extracted !== currentInput &&
+        extracted !== lastFetchedUsernameRef.current
+      ) {
+        form.setValue('input', usernameParam);
+      }
+    }
+  }, [usernameParam, form]);
+
+  // Auto-fetch profile when username is in URL (on mount or URL change)
+  React.useEffect(() => {
+    if (usernameParam && isLikelyUsername(usernameParam)) {
+      const extracted = extractLinkedInUsername(usernameParam) ?? usernameParam;
+      // Only fetch if this is a different username than we last fetched
+      if (extracted !== lastFetchedUsernameRef.current) {
+        fetchProfile({ input: usernameParam }, false);
+      }
+    } else if (!usernameParam) {
+      // URL was cleared, clear profile
+      setProfile(null);
+      setLastAnalysedAt(null);
+      lastFetchedUsernameRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usernameParam]);
 
   async function fetchProfile(values: FormValues, forceRefresh = false) {
     setLoading(true);
@@ -82,6 +119,17 @@ export function ProfileForm() {
     try {
       const username =
         extractLinkedInUsername(values.input) ?? values.input.trim();
+
+      if (!username || !isLikelyUsername(username)) {
+        throw new Error('Invalid LinkedIn username');
+      }
+
+      // Update ref first to prevent duplicate fetches
+      lastFetchedUsernameRef.current = username;
+
+      // Update URL with the username
+      await setUsernameParam(username);
+
       const res = await fetch('/api/linkedin', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -97,6 +145,9 @@ export function ProfileForm() {
       const message =
         err instanceof Error ? err.message : 'Something went wrong';
       toast.error('Could not fetch LinkedIn profile', { description: message });
+      // Clear URL on error
+      await setUsernameParam(null);
+      lastFetchedUsernameRef.current = null;
     } finally {
       setLoading(false);
     }
