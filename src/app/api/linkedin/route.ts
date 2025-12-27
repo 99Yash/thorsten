@@ -1,5 +1,9 @@
+import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { db } from '~/db';
+import { linkedinProfile } from '~/db/schemas';
+import { createId } from '~/db/schemas/helpers';
 import {
   extractLinkedInUsername,
   isLikelyUsername,
@@ -12,6 +16,7 @@ const BodySchema = z
   .object({
     url: z.url().optional(),
     username: z.string().optional(),
+    forceRefresh: z.boolean().optional(), // bypass cache and fetch fresh
   })
   .refine((v) => Boolean(v.url || v.username), {
     message: 'Either url or username must be provided',
@@ -19,7 +24,6 @@ const BodySchema = z
   });
 
 // Server-side schema logs
-
 if (process.env.DEBUG_LINKEDIN_ROUTE === '1') {
   console.log('[LinkedIn][route] BodySchema:', BodySchema);
   console.log(
@@ -27,6 +31,7 @@ if (process.env.DEBUG_LINKEDIN_ROUTE === '1') {
     LinkedInRawProfileSchema
   );
 }
+
 export async function POST(req: Request) {
   try {
     const json = await req.json().catch(() => ({}));
@@ -46,6 +51,25 @@ export async function POST(req: Request) {
       );
     }
 
+    // Check for cached profile first (unless forceRefresh is true)
+    if (!body.forceRefresh) {
+      const cached = await db.query.linkedinProfile.findFirst({
+        where: eq(linkedinProfile.username, username),
+      });
+
+      if (cached) {
+        return NextResponse.json(
+          {
+            data: cached.rawData,
+            lastAnalysedAt: cached.lastAnalysedAt.toISOString(),
+            cached: true,
+          },
+          { status: 200 }
+        );
+      }
+    }
+
+    // Fetch fresh data from RapidAPI
     const apiHost = RAPID_API_URL;
     const apiKey = process.env.RAPID_API_KEY;
 
@@ -94,8 +118,52 @@ export async function POST(req: Request) {
       },
       { depth: Infinity, colors: true }
     );
-    // Bypass schema validation and return raw payload
-    return NextResponse.json({ data: raw }, { status: 200 });
+
+    // Save or update the profile in database
+    const now = new Date();
+    const existingProfile = await db.query.linkedinProfile.findFirst({
+      where: eq(linkedinProfile.username, username),
+    });
+
+    if (existingProfile) {
+      // Update existing profile
+      await db
+        .update(linkedinProfile)
+        .set({
+          fullName:
+            [raw.firstName, raw.lastName].filter(Boolean).join(' ') || null,
+          headline: raw.headline || null,
+          profilePicture: raw.profilePicture || null,
+          location: raw.geo?.full || null,
+          summary: raw.summary || null,
+          rawData: raw,
+          lastAnalysedAt: now,
+        })
+        .where(eq(linkedinProfile.id, existingProfile.id));
+    } else {
+      // Insert new profile
+      await db.insert(linkedinProfile).values({
+        id: createId('lpro'),
+        username,
+        fullName:
+          [raw.firstName, raw.lastName].filter(Boolean).join(' ') || null,
+        headline: raw.headline || null,
+        profilePicture: raw.profilePicture || null,
+        location: raw.geo?.full || null,
+        summary: raw.summary || null,
+        rawData: raw,
+        lastAnalysedAt: now,
+      });
+    }
+
+    return NextResponse.json(
+      {
+        data: raw,
+        lastAnalysedAt: now.toISOString(),
+        cached: false,
+      },
+      { status: 200 }
+    );
   } catch (err) {
     console.error('[LinkedIn][route] Error:', err);
     return NextResponse.json(

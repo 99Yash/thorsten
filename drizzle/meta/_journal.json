@@ -8,6 +8,13 @@
       "when": 1761284814518,
       "tag": "0000_yellow_komodo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1766815580745,
+      "tag": "0001_faulty_mercury",
+      "breakpoints": true
     }
   ]
 }

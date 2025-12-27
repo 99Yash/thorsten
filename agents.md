@@ -1,6 +1,6 @@
 ---
 name: thorsten-agent
-description: AI coding assistant for the Thorsten resume builder application
+description: AI coding assistant for the Thorsten LinkedIn scraper application
 ---
 
 You are an expert full-stack developer for this project. You understand Next.js, React, TypeScript, database design, and API integration patterns.
@@ -15,6 +15,7 @@ You are an expert full-stack developer for this project. You understand Next.js,
 ## Project Knowledge
 
 **Tech Stack:**
+
 - Next.js 16.0.0 (App Router)
 - React 19.2.0
 - TypeScript 5.x
@@ -27,6 +28,7 @@ You are an expert full-stack developer for this project. You understand Next.js,
 - RapidAPI for LinkedIn profile data
 
 **File Structure:**
+
 - `src/app/` – Next.js App Router pages and API routes
   - `(auth)/` – Authentication routes (signin, etc.)
   - `api/` – API route handlers (`/api/linkedin`, `/api/auth`)
@@ -44,22 +46,25 @@ You are an expert full-stack developer for this project. You understand Next.js,
 - `drizzle/` – Database migration files
 
 **Project Purpose:**
-Thorsten (also known as Olivia) is an AI assistant for building resumes. Users can import their LinkedIn profiles to generate resume content. The application supports authentication via email, Google OAuth, and GitHub OAuth.
+Thorsten (also known as Olivia) is a LinkedIn profile scraper. Users can input LinkedIn profile URLs or usernames to fetch and display LinkedIn profile data. The application uses RapidAPI to scrape profile information and caches results in a PostgreSQL database. The application supports authentication via email, Google OAuth, and GitHub OAuth.
 
 ## Tools You Can Use
 
 **Development:**
+
 - `pnpm dev` – Start Next.js development server (assume it's always running)
 - `pnpm build` – Build production bundle
 - `pnpm start` – Start production server
 
 **Database:**
+
 - `pnpm db:generate` – Generate Drizzle migration files from schema changes
 - `pnpm db:migrate` – Run database migrations
 - `pnpm db:push` – Push schema changes directly to database (dev only)
 - `pnpm db:studio` – Open Drizzle Studio to browse database
 
 **Code Quality:**
+
 - `pnpm lint` – Run ESLint
 
 ## Standards
@@ -67,6 +72,7 @@ Thorsten (also known as Olivia) is an AI assistant for building resumes. Users c
 Follow these rules for all code you write:
 
 **Naming Conventions:**
+
 - Components: PascalCase (`ProfileForm`, `MainLayout`, `ProfileCard`)
 - Functions/variables: camelCase (`fetchLinkedInProfile`, `extractUsername`)
 - Constants: UPPER_SNAKE_CASE (`RAPID_API_URL`, `DATABASE_URL`)
@@ -78,36 +84,39 @@ Follow these rules for all code you write:
 
 ```typescript
 // ✅ Good - Type-safe, proper error handling, clear naming
-async function fetchLinkedInProfile(username: string): Promise<LinkedInRawProfile> {
+async function fetchLinkedInProfile(
+  username: string
+): Promise<LinkedInRawProfile> {
   if (!username || !isLikelyUsername(username)) {
     throw new Error('Invalid LinkedIn username');
   }
-  
+
   const response = await fetch('/api/linkedin', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username }),
   });
-  
+
   if (!response.ok) {
     throw new Error('Failed to fetch LinkedIn profile');
   }
-  
+
   const data = await response.json();
   return LinkedInRawProfileSchema.parse(data.data);
 }
 
 // ❌ Bad - No types, poor error handling, vague names
 async function getProfile(u: string) {
-  const res = await fetch('/api/linkedin', { 
-    method: 'POST', 
-    body: JSON.stringify({ username: u }) 
+  const res = await fetch('/api/linkedin', {
+    method: 'POST',
+    body: JSON.stringify({ username: u }),
   });
   return res.json();
 }
 ```
 
 **React/Next.js Patterns:**
+
 - Use Server Components by default, add `'use client'` only when needed
 - Prefer async Server Components for data fetching
 - Use React Hook Form with Zod resolvers for form validation
@@ -117,6 +126,7 @@ async function getProfile(u: string) {
 - Use path aliases (`~/components`, `~/lib`) instead of relative imports
 
 **Database Patterns:**
+
 - Define schemas in `src/db/schemas/` using Drizzle ORM
 - Use `lifecycle_dates` helper for `created_at` and `updated_at` timestamps
 - Use `createId()` helper for generating IDs with prefixes
@@ -124,15 +134,16 @@ async function getProfile(u: string) {
 - Use `db:push` only in development for rapid iteration
 
 **API Route Patterns:**
+
 ```typescript
 // ✅ Good - Proper validation, error handling, type safety
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const validated = BodySchema.parse(body);
-    
+
     // ... business logic ...
-    
+
     return NextResponse.json({ data: result }, { status: 200 });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -141,7 +152,7 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    
+
     console.error('[API] Error:', err);
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -152,6 +163,7 @@ export async function POST(req: Request) {
 ```
 
 **Component Patterns:**
+
 ```typescript
 // ✅ Good - Server Component, typed props, clean structure
 interface ProfileCardProps {
@@ -164,27 +176,28 @@ export function ProfileCard({ profile }: ProfileCardProps) {
       <CardHeader>
         <CardTitle>{profile.headline}</CardTitle>
       </CardHeader>
-      <CardContent>
-        {/* ... */}
-      </CardContent>
+      <CardContent>{/* ... */}</CardContent>
     </Card>
   );
 }
 ```
 
 **Authentication:**
+
 - Use Better Auth for all auth operations
 - Access server-side auth via `auth()` from `~/lib/auth/server`
 - Access client-side auth via `useAuth()` hook (if available)
 - Follow existing patterns in `src/app/(auth)/` routes
 
 **LinkedIn Integration:**
+
 - Use Zod schemas from `~/lib/linkedin/schema` for type safety
 - Use parsing utilities from `~/lib/linkedin/parse` for URL/username extraction
 - Always validate LinkedIn profile data with `LinkedInRawProfileSchema`
 - Handle RapidAPI errors gracefully with user-friendly messages
 
 **Styling:**
+
 - Use Tailwind CSS utility classes
 - Prefer component variants over inline conditional classes
 - Use `cn()` utility from `~/lib/utils` for conditional classes
@@ -193,6 +206,7 @@ export function ProfileCard({ profile }: ProfileCardProps) {
 ## Boundaries
 
 **✅ Always:**
+
 - Write to `src/` for application code
 - Use TypeScript with strict mode enabled
 - Follow existing code patterns and structure
@@ -202,6 +216,7 @@ export function ProfileCard({ profile }: ProfileCardProps) {
 - Use Server Components by default, only use Client Components when necessary
 
 **⚠️ Ask First:**
+
 - Adding new dependencies to `package.json`
 - Modifying database schemas (requires migration planning)
 - Adding new environment variables
@@ -210,6 +225,7 @@ export function ProfileCard({ profile }: ProfileCardProps) {
 - Making breaking changes to component APIs
 
 **🚫 Never:**
+
 - Commit secrets, API keys, or sensitive data
 - Modify `node_modules/` or `.next/` directories
 - Edit generated migration files in `drizzle/` (except when fixing mistakes)
@@ -240,4 +256,3 @@ When working on tasks, follow this workflow:
 5. **Test** – Verify functionality works as expected (manual testing or unit tests if available)
 
 Remember: This codebase prioritizes type safety, maintainability, and user experience. When in doubt, choose the more type-safe, explicit, and maintainable approach.
-
