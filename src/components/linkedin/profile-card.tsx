@@ -334,9 +334,9 @@ export function ProfileCard({
                   {allExperience.map((role, idx) => {
                     const roleKey = `${role.companyName || 'unknown'}-${
                       role.title || 'untitled'
-                    }-${role.start?.year || idx}-${
+                    }-${role.start?.year || 'unknown-start'}-${
                       role.end?.year || 'current'
-                    }`;
+                    }-${idx}`;
                     return (
                       <div key={roleKey} className="rounded-md border p-3.5">
                         <div className="flex items-start gap-3">
