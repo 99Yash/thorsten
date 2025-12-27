@@ -81,7 +81,6 @@ export function ProfileForm() {
     mode: 'onTouched',
   });
 
-  // Sync form input with URL parameter (only when URL changes externally)
   React.useEffect(() => {
     if (usernameParam) {
       const currentInput = form.getValues().input;
@@ -95,16 +94,13 @@ export function ProfileForm() {
     }
   }, [usernameParam, form]);
 
-  // Auto-fetch profile when username is in URL (on mount or URL change)
   React.useEffect(() => {
     if (usernameParam && isLikelyUsername(usernameParam)) {
       const extracted = extractLinkedInUsername(usernameParam) ?? usernameParam;
-      // Only fetch if this is a different username than we last fetched
       if (extracted !== lastFetchedUsernameRef.current) {
         fetchProfile({ input: usernameParam }, false);
       }
     } else if (!usernameParam) {
-      // URL was cleared, clear profile
       setProfile(null);
       setLastAnalysedAt(null);
       lastFetchedUsernameRef.current = null;
@@ -124,10 +120,8 @@ export function ProfileForm() {
         throw new Error('Invalid LinkedIn username');
       }
 
-      // Update ref first to prevent duplicate fetches
       lastFetchedUsernameRef.current = username;
 
-      // Update URL with the username
       await setUsernameParam(username);
 
       const res = await fetch('/api/linkedin', {
@@ -145,7 +139,6 @@ export function ProfileForm() {
       const message =
         err instanceof Error ? err.message : 'Something went wrong';
       toast.error('Could not fetch LinkedIn profile', { description: message });
-      // Clear URL on error
       await setUsernameParam(null);
       lastFetchedUsernameRef.current = null;
     } finally {
@@ -160,7 +153,6 @@ export function ProfileForm() {
   return (
     <div className="w-full max-w-7xl">
       <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
-        {/* Form Card - Left Side */}
         <Card className="lg:self-start lg:sticky lg:top-6">
           <CardHeader className="text-left">
             <CardTitle>Import LinkedIn profile</CardTitle>
@@ -203,7 +195,6 @@ export function ProfileForm() {
           </CardContent>
         </Card>
 
-        {/* Profile Card - Right Side */}
         <div className="min-h-[200px]">
           {loading ? (
             <div className="space-y-4">

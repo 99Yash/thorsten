@@ -18,7 +18,6 @@ export function formatDatePart(
 
 export function formatProficiency(proficiency?: string): string {
   if (!proficiency) return '—';
-  // Convert FULL_PROFESSIONAL or NATIVE_OR_BILINGUAL to "Full Professional" or "Native / Bilingual"
   return proficiency
     .replace(/_/g, ' ')
     .replace(/\bOR\b/gi, '/')
@@ -42,7 +41,6 @@ export function calculateDuration(
       ? new Date(end.year, (end.month || 1) - 1, end.day || 1)
       : new Date();
 
-  // Validate date range: end date should not be before start date
   if (endDate.getTime() < startDate.getTime()) {
     return undefined; // Invalid date range - return undefined to indicate invalid data
   }
@@ -70,7 +68,6 @@ export function formatRelativeTime(dateString: string): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
 
-  // Handle future dates
   if (diffMs < 0) {
     return 'In the future';
   }

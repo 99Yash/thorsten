@@ -64,7 +64,6 @@ async function fetchProfileFromAPI(
     username
   )}`;
 
-  // Add request timeout (30 seconds)
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -108,7 +107,6 @@ async function fetchProfileFromAPI(
     );
   }
 
-  // Parse and validate response
   let raw: unknown;
   try {
     raw = await res.json();
@@ -120,10 +118,8 @@ async function fetchProfileFromAPI(
     });
   }
 
-  // Validate response against schema
   const validated = LinkedInRawProfileSchema.safeParse(raw);
   if (!validated.success) {
-    // Log validation errors in development
     if (process.env.NODE_ENV === 'development') {
       console.error(
         '[LinkedIn][route] Validation errors:',
@@ -137,7 +133,6 @@ async function fetchProfileFromAPI(
     });
   }
 
-  // Conditional debug logging (only in development)
   if (
     process.env.NODE_ENV === 'development' ||
     process.env.DEBUG_LINKEDIN_ROUTE === '1'
@@ -154,11 +149,9 @@ async function fetchProfileFromAPI(
     );
   }
 
-  // Use validated data
   const profileData = validated.data;
   const now = new Date();
 
-  // Prepare common fields
   const fullName =
     [profileData.firstName, profileData.lastName].filter(Boolean).join(' ') ||
     null;
@@ -193,7 +186,6 @@ async function fetchProfileFromAPI(
 
 export async function POST(req: Request) {
   try {
-    // Parse request body with proper error handling
     let json: unknown;
     try {
       json = await req.json();
@@ -238,10 +230,8 @@ export async function POST(req: Request) {
       }
     }
 
-    // Check for existing pending request (request deduplication)
     const existingRequest = pendingRequests.get(username);
     if (existingRequest) {
-      // Wait for the existing request to complete
       try {
         const result = await existingRequest;
         return NextResponse.json(
@@ -253,15 +243,11 @@ export async function POST(req: Request) {
           { status: 200 }
         );
       } catch (err) {
-        // If the existing request failed, we'll fall through to create a new one
-        // Remove the failed request from the map
         pendingRequests.delete(username);
-        // Re-throw to be handled by outer catch
         throw err;
       }
     }
 
-    // Create new request and store it for deduplication
     const fetchPromise = fetchProfileFromAPI(username);
     pendingRequests.set(username, fetchPromise);
 
@@ -276,13 +262,11 @@ export async function POST(req: Request) {
         { status: 200 }
       );
     } finally {
-      // Always clean up the pending request
       pendingRequests.delete(username);
     }
   } catch (err) {
     console.error('[LinkedIn][route] Error:', err);
 
-    // Handle AppError instances
     if (err instanceof AppError) {
       return NextResponse.json(
         {
@@ -293,7 +277,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Handle Zod validation errors
     if (err instanceof z.ZodError) {
       return NextResponse.json(
         {
@@ -304,7 +287,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generic error fallback
     return NextResponse.json(
       {
         error: 'Unexpected server error while fetching LinkedIn profile.',

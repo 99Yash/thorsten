@@ -73,13 +73,11 @@ export function ProfileCard({
     [username]
   );
 
-  // Memoize expensive position sorting
   const positions = React.useMemo(() => {
     const pos = (profile.fullPositions ?? profile.position ?? []).slice();
     const yearVal = (y?: number | null) =>
       typeof y === 'number' && y > 0 ? y : undefined;
     pos.sort((a, b) => {
-      // Current roles often have no end date
       const aEnd = yearVal(a.end?.year) ?? 9999;
       const bEnd = yearVal(b.end?.year) ?? 9999;
       if (aEnd !== bEnd) return bEnd - aEnd;
@@ -96,7 +94,6 @@ export function ProfileCard({
   );
   const allExperience = positions;
 
-  // Memoize skills filtering
   const skills = React.useMemo(
     () => (profile.skills ?? []).filter((s) => s?.name?.trim()),
     [profile.skills]
@@ -105,7 +102,6 @@ export function ProfileCard({
   const educations = profile.educations ?? [];
   const languages = profile.languages ?? [];
 
-  // Memoize project items parsing
   const projectItems: LinkedInProject[] = React.useMemo(() => {
     return Array.isArray(profile.projects)
       ? (profile.projects as LinkedInProject[])
@@ -219,7 +215,6 @@ export function ProfileCard({
                         const w = img.width ?? 80;
                         const h = img.height ?? 80;
                         return (
-                          // Using native img to avoid Next Image layout shifts for unknown remote hosts
                           <img
                             key={idx}
                             src={img.url}
@@ -633,7 +628,6 @@ export function ProfileCard({
                         const name = p.name ?? p.title ?? 'Project';
                         const description = p.description;
                         const url = p.url;
-                        // Contributors are not in the schema, so we handle them as unknown
                         const contributors: unknown[] = Array.isArray(
                           (p as Record<string, unknown>).contributors
                         )
