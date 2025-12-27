@@ -607,7 +607,9 @@ function SidebarMenuSkeleton({
   showIcon?: boolean;
 }) {
   // Random width between 50 to 90%.
-  // Use useState with lazy initializer to ensure random value is only generated once
+  // Use useState with a lazy initializer so the random value is generated once per
+  // component mount (instead of being regenerated on every render, as with useMemo
+  // without dependencies).
   const [width] = React.useState(() => {
     return `${Math.floor(Math.random() * 40) + 50}%`;
   });
