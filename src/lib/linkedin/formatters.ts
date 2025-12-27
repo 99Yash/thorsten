@@ -42,7 +42,10 @@ export function calculateDuration(
       : new Date();
 
   if (endDate.getTime() < startDate.getTime()) {
-    return undefined; // Invalid date range - return undefined to indicate invalid data
+    // End date is before start date: treat this as invalid data rather than a negative
+    // or zero duration. Callers rely on `undefined` here to avoid displaying an
+    // incorrect duration for inconsistent date ranges.
+    return undefined;
   }
 
   const diffMs = endDate.getTime() - startDate.getTime();
