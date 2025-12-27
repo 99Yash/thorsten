@@ -27,6 +27,7 @@ export function Modal({
   onClose,
   desktopOnly,
   preventDefaultClose,
+  onOpenAutoFocus,
 }: {
   children: React.ReactNode;
   className?: string;
@@ -35,6 +36,7 @@ export function Modal({
   onClose?: () => void;
   desktopOnly?: boolean;
   preventDefaultClose?: boolean;
+  onOpenAutoFocus?: (e: Event) => void;
 }) {
   const router = useRouter();
 
@@ -100,7 +102,13 @@ export function Modal({
         </VisuallyHidden>
         <DialogOverlay id="modal-backdrop" />
         <DialogContent
-          onOpenAutoFocus={(e) => e.preventDefault()}
+          onOpenAutoFocus={(e) => {
+            if (onOpenAutoFocus) {
+              onOpenAutoFocus(e);
+            } else {
+              e.preventDefault();
+            }
+          }}
           onCloseAutoFocus={(e) => e.preventDefault()}
           className={cn(className)}
         >
