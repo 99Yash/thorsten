@@ -1,6 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useQueryState } from 'nuqs';
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
@@ -16,6 +17,11 @@ import {
   CardHeader,
   CardTitle,
 } from '~/components/ui/card';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '~/components/ui/collapsible';
 import {
   Form,
   FormControl,
@@ -73,6 +79,7 @@ export function ProfileForm() {
   const [lastAnalysedAt, setLastAnalysedAt] = React.useState<string | null>(
     null
   );
+  const [isFormOpen, setIsFormOpen] = React.useState(true);
   const lastFetchedUsernameRef = React.useRef<string | null>(null);
 
   const form = useForm<FormValues>({
@@ -150,50 +157,81 @@ export function ProfileForm() {
     return fetchProfile(values, false);
   };
 
+  React.useEffect(() => {
+    if (profile) {
+      setIsFormOpen(false);
+    }
+  }, [profile]);
+
   return (
     <div className="w-full max-w-7xl">
-      <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
-        <Card className="lg:self-start lg:sticky lg:top-6">
-          <CardHeader className="text-left">
-            <CardTitle>Import LinkedIn profile</CardTitle>
-            <CardDescription>
-              Paste a LinkedIn personal profile URL or username.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-4"
-              >
-                <FormField
-                  control={form.control}
-                  name="input"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>LinkedIn URL or username</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="linkedin.com/in/jane-doe"
-                          autoComplete="off"
-                          inputMode="url"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription className="text-xs">
-                        Client-side validation only.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" disabled={loading} className="w-full">
-                  {loading ? 'Fetching…' : 'Fetch profile'}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
+      <div className="space-y-6">
+        <Collapsible
+          open={isFormOpen}
+          onOpenChange={setIsFormOpen}
+          className="w-full"
+        >
+          <div className="flex items-center justify-end">
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                {isFormOpen ? (
+                  <>
+                    <ChevronUp className="size-4" />
+                    Hide form
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="size-4" />
+                    Show form
+                  </>
+                )}
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+          <CollapsibleContent>
+            <Card className="w-full border-dashed">
+              <CardHeader className="text-left">
+                <CardTitle>Import LinkedIn profile</CardTitle>
+                <CardDescription>
+                  Paste a LinkedIn personal profile URL or username.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Form {...form}>
+                  <form
+                    onSubmit={form.handleSubmit(onSubmit)}
+                    className="space-y-4"
+                  >
+                    <FormField
+                      control={form.control}
+                      name="input"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>LinkedIn URL or username</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="linkedin.com/in/jane-doe"
+                              autoComplete="off"
+                              inputMode="url"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs">
+                            Client-side validation only.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button type="submit" disabled={loading} className="w-full">
+                      {loading ? 'Fetching…' : 'Fetch profile'}
+                    </Button>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+          </CollapsibleContent>
+        </Collapsible>
 
         <div className="min-h-[200px]">
           {loading ? (
