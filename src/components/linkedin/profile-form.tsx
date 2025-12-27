@@ -101,6 +101,19 @@ export function ProfileForm() {
     }
   }, [usernameParam, form]);
 
+  // Auto-fetch profiles when a ?username=... query parameter is present.
+  // 
+  // This effect runs whenever the URL `username` query param changes. If the
+  // value looks like a valid LinkedIn username, we normalise it (via
+  // `extractLinkedInUsername`) and trigger `fetchProfile` exactly once for
+  // each distinct username. The `lastFetchedUsernameRef` guard prevents
+  // redundant refetches when the same username is already loaded (for example,
+  // when the component remounts or the input field is updated programmatically).
+  //
+  // When the `username` query param is cleared, we reset the currently shown
+  // profile and its analysis timestamp. The dependency array is intentionally
+  // limited to `[usernameParam]` so that form or state updates inside this
+  // effect do not cause additional, unintended fetches.
   React.useEffect(() => {
     if (usernameParam && isLikelyUsername(usernameParam)) {
       const extracted = extractLinkedInUsername(usernameParam) ?? usernameParam;
