@@ -68,6 +68,8 @@ export function ProfileCard({
     [username]
   );
 
+  // Memoize sorted positions because the sort can be relatively expensive and
+  // depends only on profile-provided data; this avoids re-sorting on every render.
   const positions = React.useMemo(() => {
     const pos = (profile.fullPositions ?? profile.position ?? []).slice();
     const yearVal = (y?: number | null) =>
