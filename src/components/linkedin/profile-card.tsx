@@ -20,108 +20,18 @@ import {
 import { ScrollArea } from '~/components/ui/scroll-area';
 import { Separator } from '~/components/ui/separator';
 import { LINKEDIN_RESCRAPE_THRESHOLD_MONTHS } from '~/lib/constants';
+import {
+  calculateDuration,
+  formatDatePart,
+  formatProficiency,
+  formatRelativeTime,
+  initialsOf,
+  isOlderThanThreshold,
+} from '~/lib/linkedin/formatters';
 import type {
   LinkedInProject,
   LinkedInRawProfile,
 } from '~/lib/linkedin/schema';
-
-function initialsOf(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean).slice(0, 2);
-  if (parts.length === 0) return 'LN';
-  return parts.map((p) => p[0]?.toUpperCase() ?? '').join('');
-}
-
-function formatDatePart(
-  d?: { year?: number; month?: number; day?: number } | null
-) {
-  if (!d || !d.year) return undefined;
-  const month = d.month ? String(d.month).padStart(2, '0') : undefined;
-  return month ? `${d.year}-${month}` : String(d.year);
-}
-
-function formatProficiency(proficiency?: string): string {
-  if (!proficiency) return '—';
-  // Convert FULL_PROFESSIONAL or NATIVE_OR_BILINGUAL to "Full Professional" or "Native / Bilingual"
-  return proficiency
-    .replace(/_/g, ' ')
-    .replace(/\bOR\b/gi, '/')
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function calculateDuration(
-  start?: { year?: number; month?: number; day?: number } | null,
-  end?: { year?: number; month?: number; day?: number } | null
-): string | undefined {
-  if (!start?.year) return undefined;
-
-  const startDate = new Date(
-    start.year,
-    (start.month || 1) - 1,
-    start.day || 1
-  );
-  const endDate =
-    end?.year && end.year > 0
-      ? new Date(end.year, (end.month || 1) - 1, end.day || 1)
-      : new Date();
-
-  const diffMs = endDate.getTime() - startDate.getTime();
-  const diffMonths = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30.44));
-
-  if (diffMonths < 1) return 'Less than a month';
-
-  const years = Math.floor(diffMonths / 12);
-  const months = diffMonths % 12;
-
-  const parts: string[] = [];
-  if (years > 0) parts.push(`${years} yr${years > 1 ? 's' : ''}`);
-  if (months > 0) parts.push(`${months} mo${months > 1 ? 's' : ''}`);
-
-  return parts.join(' ');
-}
-
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) {
-    return 'Unknown';
-  }
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMonths = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30.44));
-
-  if (diffMonths < 1) {
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    return `${diffDays} days ago`;
-  }
-
-  if (diffMonths < 12) {
-    return `${diffMonths} month${diffMonths > 1 ? 's' : ''} ago`;
-  }
-
-  const diffYears = Math.floor(diffMonths / 12);
-  const remainingMonths = diffMonths % 12;
-  if (remainingMonths === 0) {
-    return `${diffYears} year${diffYears > 1 ? 's' : ''} ago`;
-  }
-  return `${diffYears} year${
-    diffYears > 1 ? 's' : ''
-  }, ${remainingMonths} month${remainingMonths > 1 ? 's' : ''} ago`;
-}
-
-function isOlderThanThreshold(
-  dateString: string | null,
-  thresholdMonths: number
-): boolean {
-  if (!dateString) return true;
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return true;
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMonths = Math.round(diffMs / (1000 * 60 * 60 * 24 * 30.44));
-  return diffMonths >= thresholdMonths;
-}
 
 export function ProfileCard({
   profile,
@@ -136,45 +46,73 @@ export function ProfileCard({
 }) {
   const [showRawJson, setShowRawJson] = React.useState(false);
 
-  const fullName = [profile.firstName, profile.lastName]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
+  const fullName = React.useMemo(
+    () =>
+      [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim(),
+    [profile.firstName, profile.lastName]
+  );
   const username = profile.username ?? '';
-  const title = (fullName || username || 'LinkedIn User').trim();
-  const location =
-    profile.geo?.full ||
-    [profile.geo?.city, profile.geo?.country].filter(Boolean).join(', ') ||
-    undefined;
-  const avatarUrl =
-    profile.profilePicture || profile.profilePictures?.[0]?.url || undefined;
-  const linkedinUrl = username
-    ? `https://www.linkedin.com/in/${username}`
-    : undefined;
+  const title = React.useMemo(
+    () => (fullName || username || 'LinkedIn User').trim(),
+    [fullName, username]
+  );
+  const location = React.useMemo(
+    () =>
+      profile.geo?.full ||
+      [profile.geo?.city, profile.geo?.country].filter(Boolean).join(', ') ||
+      undefined,
+    [profile.geo]
+  );
+  const avatarUrl = React.useMemo(
+    () =>
+      profile.profilePicture || profile.profilePictures?.[0]?.url || undefined,
+    [profile.profilePicture, profile.profilePictures]
+  );
+  const linkedinUrl = React.useMemo(
+    () => (username ? `https://www.linkedin.com/in/${username}` : undefined),
+    [username]
+  );
 
-  const positions = (profile.fullPositions ?? profile.position ?? []).slice();
-  const yearVal = (y?: number | null) =>
-    typeof y === 'number' && y > 0 ? y : undefined;
-  positions.sort((a, b) => {
-    // Current roles often have no end date
-    const aEnd = yearVal(a.end?.year) ?? 9999;
-    const bEnd = yearVal(b.end?.year) ?? 9999;
-    if (aEnd !== bEnd) return bEnd - aEnd;
-    const aStart = yearVal(a.start?.year) ?? 0;
-    const bStart = yearVal(b.start?.year) ?? 0;
-    return bStart - aStart;
-  });
+  // Memoize expensive position sorting
+  const positions = React.useMemo(() => {
+    const pos = (profile.fullPositions ?? profile.position ?? []).slice();
+    const yearVal = (y?: number | null) =>
+      typeof y === 'number' && y > 0 ? y : undefined;
+    pos.sort((a, b) => {
+      // Current roles often have no end date
+      const aEnd = yearVal(a.end?.year) ?? 9999;
+      const bEnd = yearVal(b.end?.year) ?? 9999;
+      if (aEnd !== bEnd) return bEnd - aEnd;
+      const aStart = yearVal(a.start?.year) ?? 0;
+      const bStart = yearVal(b.start?.year) ?? 0;
+      return bStart - aStart;
+    });
+    return pos;
+  }, [profile.fullPositions, profile.position]);
 
-  const current = positions.find((p) => !p.end?.year);
+  const current = React.useMemo(
+    () => positions.find((p) => !p.end?.year),
+    [positions]
+  );
   const allExperience = positions;
-  const skills = (profile.skills ?? []).filter((s) => s?.name?.trim());
+
+  // Memoize skills filtering
+  const skills = React.useMemo(
+    () => (profile.skills ?? []).filter((s) => s?.name?.trim()),
+    [profile.skills]
+  );
+
   const educations = profile.educations ?? [];
   const languages = profile.languages ?? [];
-  const projectItems: LinkedInProject[] = Array.isArray(profile.projects)
-    ? (profile.projects as LinkedInProject[])
-    : Array.isArray(profile.projects?.items)
-    ? (profile.projects.items as LinkedInProject[])
-    : [];
+
+  // Memoize project items parsing
+  const projectItems: LinkedInProject[] = React.useMemo(() => {
+    return Array.isArray(profile.projects)
+      ? (profile.projects as LinkedInProject[])
+      : Array.isArray(profile.projects?.items)
+      ? (profile.projects.items as LinkedInProject[])
+      : [];
+  }, [profile.projects]);
 
   return (
     <Card className="w-full">
@@ -393,87 +331,94 @@ export function ProfileCard({
                   Experience
                 </h3>
                 <div className="space-y-2.5">
-                  {allExperience.map((role, idx) => (
-                    <div key={idx} className="rounded-md border p-3.5">
-                      <div className="flex items-start gap-3">
-                        {role.companyLogo ? (
-                          <Avatar className="size-9">
-                            <AvatarImage
-                              src={role.companyLogo}
-                              alt={role.companyName ?? 'Company logo'}
-                            />
-                            <AvatarFallback>
-                              {initialsOf(role.companyName ?? 'Company')}
-                            </AvatarFallback>
-                          </Avatar>
-                        ) : role.companyName ? (
-                          <div className="size-9 shrink-0 rounded-md bg-muted text-xs font-medium flex items-center justify-center">
-                            {initialsOf(role.companyName)}
-                          </div>
-                        ) : null}
-                        <div className="flex-1">
-                          <p className="font-medium">
-                            {role.title || '—'}{' '}
-                            {role.companyName ? (
-                              role.companyURL ? (
-                                <a
-                                  className="text-muted-foreground hover:text-foreground underline underline-offset-4"
-                                  href={role.companyURL}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  @ {role.companyName}
-                                </a>
-                              ) : (
-                                `@ ${role.companyName}`
-                              )
-                            ) : (
-                              ''
-                            )}
-                          </p>
-                          <p className="text-muted-foreground mt-1 text-sm">
-                            {[
-                              formatDatePart(role.start),
-                              '–',
-                              formatDatePart(role.end) ?? 'Present',
-                            ]
-                              .filter(Boolean)
-                              .join(' ')}
-                            {(() => {
-                              const duration = calculateDuration(
-                                role.start,
-                                role.end
-                              );
-                              return duration ? (
-                                <span className="text-muted-foreground/70">
-                                  {' '}
-                                  · {duration}
-                                </span>
-                              ) : null;
-                            })()}
-                          </p>
-                          <div className="text-muted-foreground mt-1 text-xs">
-                            {[
-                              role.location,
-                              role.employmentType,
-                              role.locationType,
-                              role.companyIndustry,
-                              role.companyStaffCountRange
-                                ? `${role.companyStaffCountRange} employees`
-                                : undefined,
-                            ]
-                              .filter(Boolean)
-                              .join(' • ')}
-                          </div>
-                          {role.description ? (
-                            <p className="mt-2 text-sm whitespace-pre-line">
-                              {role.description}
-                            </p>
+                  {allExperience.map((role, idx) => {
+                    const roleKey = `${role.companyName || 'unknown'}-${
+                      role.title || 'untitled'
+                    }-${role.start?.year || idx}-${
+                      role.end?.year || 'current'
+                    }`;
+                    return (
+                      <div key={roleKey} className="rounded-md border p-3.5">
+                        <div className="flex items-start gap-3">
+                          {role.companyLogo ? (
+                            <Avatar className="size-9">
+                              <AvatarImage
+                                src={role.companyLogo}
+                                alt={role.companyName ?? 'Company logo'}
+                              />
+                              <AvatarFallback>
+                                {initialsOf(role.companyName ?? 'Company')}
+                              </AvatarFallback>
+                            </Avatar>
+                          ) : role.companyName ? (
+                            <div className="size-9 shrink-0 rounded-md bg-muted text-xs font-medium flex items-center justify-center">
+                              {initialsOf(role.companyName)}
+                            </div>
                           ) : null}
+                          <div className="flex-1">
+                            <p className="font-medium">
+                              {role.title || '—'}{' '}
+                              {role.companyName ? (
+                                role.companyURL ? (
+                                  <a
+                                    className="text-muted-foreground hover:text-foreground underline underline-offset-4"
+                                    href={role.companyURL}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    @ {role.companyName}
+                                  </a>
+                                ) : (
+                                  `@ ${role.companyName}`
+                                )
+                              ) : (
+                                ''
+                              )}
+                            </p>
+                            <p className="text-muted-foreground mt-1 text-sm">
+                              {[
+                                formatDatePart(role.start),
+                                '–',
+                                formatDatePart(role.end) ?? 'Present',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                              {(() => {
+                                const duration = calculateDuration(
+                                  role.start,
+                                  role.end
+                                );
+                                return duration ? (
+                                  <span className="text-muted-foreground/70">
+                                    {' '}
+                                    · {duration}
+                                  </span>
+                                ) : null;
+                              })()}
+                            </p>
+                            <div className="text-muted-foreground mt-1 text-xs">
+                              {[
+                                role.location,
+                                role.employmentType,
+                                role.locationType,
+                                role.companyIndustry,
+                                role.companyStaffCountRange
+                                  ? `${role.companyStaffCountRange} employees`
+                                  : undefined,
+                              ]
+                                .filter(Boolean)
+                                .join(' • ')}
+                            </div>
+                            {role.description ? (
+                              <p className="mt-2 text-sm whitespace-pre-line">
+                                {role.description}
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             ) : null}
@@ -493,7 +438,7 @@ export function ProfileCard({
                   <div className="flex flex-wrap gap-2">
                     {skills.map((skill, i) => (
                       <Badge
-                        key={i}
+                        key={skill.name || `skill-${i}`}
                         variant={
                           skill.passedSkillAssessment ? 'default' : 'outline'
                         }
@@ -521,70 +466,77 @@ export function ProfileCard({
                     Education
                   </h3>
                   <div className="space-y-2.5">
-                    {educations.map((edu, idx) => (
-                      <div key={idx} className="rounded-md border p-3.5">
-                        <div className="flex items-start gap-3">
-                          {(() => {
-                            const schoolLogo = (edu.logo || [])?.find?.(
-                              (l) => !!l?.url
-                            )?.url;
-                            return schoolLogo ? (
-                              <Avatar className="size-9">
-                                <AvatarImage
-                                  src={schoolLogo}
-                                  alt={edu.schoolName ?? 'School logo'}
-                                />
-                                <AvatarFallback>
-                                  {initialsOf(edu.schoolName ?? 'School')}
-                                </AvatarFallback>
-                              </Avatar>
-                            ) : edu.schoolName ? (
-                              <div className="size-9 shrink-0 rounded-md bg-muted text-xs font-medium flex items-center justify-center">
-                                {initialsOf(edu.schoolName)}
-                              </div>
-                            ) : null;
-                          })()}
-                          <div className="flex-1">
-                            <p className="font-medium">
-                              {edu.schoolName || '—'}
-                              {edu.degree ? (
-                                <span className="text-muted-foreground">
-                                  {' '}
-                                  • {edu.degree}
-                                </span>
-                              ) : null}
-                              {edu.fieldOfStudy ? (
-                                <span className="text-muted-foreground">
-                                  , {edu.fieldOfStudy}
-                                </span>
-                              ) : null}
-                            </p>
-                            <p className="text-muted-foreground mt-1 text-sm">
-                              {[
-                                formatDatePart(edu.start),
-                                '–',
-                                formatDatePart(edu.end) ?? undefined,
-                              ]
-                                .filter(Boolean)
-                                .join(' ')}
-                            </p>
-                            {edu.grade ? (
-                              <p className="text-muted-foreground mt-1 text-xs">
-                                Grade: {edu.grade}
+                    {educations.map((edu, idx) => {
+                      const eduKey = `${edu.schoolName || 'unknown'}-${
+                        edu.degree || 'no-degree'
+                      }-${edu.start?.year || idx}-${
+                        edu.end?.year || 'ongoing'
+                      }`;
+                      return (
+                        <div key={eduKey} className="rounded-md border p-3.5">
+                          <div className="flex items-start gap-3">
+                            {(() => {
+                              const schoolLogo = (edu.logo || [])?.find?.(
+                                (l) => !!l?.url
+                              )?.url;
+                              return schoolLogo ? (
+                                <Avatar className="size-9">
+                                  <AvatarImage
+                                    src={schoolLogo}
+                                    alt={edu.schoolName ?? 'School logo'}
+                                  />
+                                  <AvatarFallback>
+                                    {initialsOf(edu.schoolName ?? 'School')}
+                                  </AvatarFallback>
+                                </Avatar>
+                              ) : edu.schoolName ? (
+                                <div className="size-9 shrink-0 rounded-md bg-muted text-xs font-medium flex items-center justify-center">
+                                  {initialsOf(edu.schoolName)}
+                                </div>
+                              ) : null;
+                            })()}
+                            <div className="flex-1">
+                              <p className="font-medium">
+                                {edu.schoolName || '—'}
+                                {edu.degree ? (
+                                  <span className="text-muted-foreground">
+                                    {' '}
+                                    • {edu.degree}
+                                  </span>
+                                ) : null}
+                                {edu.fieldOfStudy ? (
+                                  <span className="text-muted-foreground">
+                                    , {edu.fieldOfStudy}
+                                  </span>
+                                ) : null}
                               </p>
-                            ) : null}
-                            {edu.activities ? (
-                              <p className="mt-2 text-sm">{edu.activities}</p>
-                            ) : null}
-                            {edu.description ? (
                               <p className="text-muted-foreground mt-1 text-sm">
-                                {edu.description}
+                                {[
+                                  formatDatePart(edu.start),
+                                  '–',
+                                  formatDatePart(edu.end) ?? undefined,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ')}
                               </p>
-                            ) : null}
+                              {edu.grade ? (
+                                <p className="text-muted-foreground mt-1 text-xs">
+                                  Grade: {edu.grade}
+                                </p>
+                              ) : null}
+                              {edu.activities ? (
+                                <p className="mt-2 text-sm">{edu.activities}</p>
+                              ) : null}
+                              {edu.description ? (
+                                <p className="text-muted-foreground mt-1 text-sm">
+                                  {edu.description}
+                                </p>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               </>
@@ -600,7 +552,7 @@ export function ProfileCard({
                   <div className="flex flex-wrap gap-3">
                     {languages.map((lang, i) => (
                       <div
-                        key={i}
+                        key={lang.name || `lang-${i}`}
                         className="flex items-center gap-2 rounded-md border px-3 py-2"
                       >
                         <span className="font-medium">{lang.name || '—'}</span>
@@ -634,8 +586,14 @@ export function ProfileCard({
                           (typeof c.year === 'number'
                             ? String(c.year)
                             : c.year);
+                        const certKey = `${name}-${issuer || 'unknown'}-${
+                          date || i
+                        }`;
                         return (
-                          <div key={i} className="rounded-md border p-3.5">
+                          <div
+                            key={certKey}
+                            className="rounded-md border p-3.5"
+                          >
                             <p className="font-medium">{name}</p>
                             {issuer ? (
                               <p className="text-muted-foreground mt-1 text-sm">
@@ -682,8 +640,12 @@ export function ProfileCard({
                           ? ((p as Record<string, unknown>)
                               .contributors as unknown[])
                           : [];
+                        const projectKey = `${name}-${url || i}`;
                         return (
-                          <div key={i} className="rounded-md border p-3.5">
+                          <div
+                            key={projectKey}
+                            className="rounded-md border p-3.5"
+                          >
                             <p className="font-medium">
                               {name}{' '}
                               {url ? (
@@ -742,9 +704,10 @@ export function ProfileCard({
                                         ? contributor.username
                                         : undefined) ||
                                       'User';
+                                    const contributorKey = `${displayName}-${ci}`;
                                     return (
                                       <Avatar
-                                        key={ci}
+                                        key={contributorKey}
                                         className="size-7 ring-2 ring-background"
                                         title={displayName}
                                       >
@@ -788,13 +751,17 @@ export function ProfileCard({
                       {Array.isArray(profile.supportedLocales) &&
                       profile.supportedLocales.length ? (
                         <ul className="mt-1 list-inside list-disc text-sm">
-                          {profile.supportedLocales.map((loc, i) => (
-                            <li key={i}>
-                              {typeof loc === 'string'
-                                ? loc
-                                : JSON.stringify(loc)}
-                            </li>
-                          ))}
+                          {profile.supportedLocales.map((loc, i) => {
+                            const localeKey =
+                              typeof loc === 'string' ? loc : `locale-${i}`;
+                            return (
+                              <li key={localeKey}>
+                                {typeof loc === 'string'
+                                  ? loc
+                                  : JSON.stringify(loc)}
+                              </li>
+                            );
+                          })}
                         </ul>
                       ) : (
                         <p className="text-muted-foreground text-sm">—</p>

@@ -4,13 +4,23 @@ import { z } from 'zod';
 import { db } from '~/db';
 import { linkedinProfile } from '~/db/schemas';
 import { createId } from '~/db/schemas/helpers';
+import { AppError } from '~/lib/errors';
 import {
   extractLinkedInUsername,
   isLikelyUsername,
 } from '~/lib/linkedin/parse';
+import type { LinkedInRawProfile } from '~/lib/linkedin/schema';
 import { LinkedInRawProfileSchema } from '~/lib/linkedin/schema';
+import { createExternalServiceError } from '~/lib/utils';
 
 const RAPID_API_URL = 'real-time-people-company-data.p.rapidapi.com';
+
+// Request deduplication: Track pending API requests by username
+// This prevents multiple simultaneous requests for the same profile
+const pendingRequests = new Map<
+  string,
+  Promise<{ data: LinkedInRawProfile; lastAnalysedAt: Date }>
+>();
 
 const BodySchema = z
   .object({
@@ -31,9 +41,170 @@ if (process.env.DEBUG_LINKEDIN_ROUTE === '1') {
   );
 }
 
+/**
+ * Fetches a LinkedIn profile from the external API and stores it in the database.
+ * This function is used for request deduplication - multiple calls for the same
+ * username will share the same promise.
+ */
+async function fetchProfileFromAPI(
+  username: string
+): Promise<{ data: LinkedInRawProfile; lastAnalysedAt: Date }> {
+  const apiHost = RAPID_API_URL;
+  const apiKey = process.env.RAPID_API_KEY;
+
+  if (!apiKey) {
+    throw new AppError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message:
+        'Server is not configured for LinkedIn fetch (missing RAPID_API_KEY).',
+    });
+  }
+
+  const endpoint = `https://${apiHost}/?username=${encodeURIComponent(
+    username
+  )}`;
+
+  // Add request timeout (30 seconds)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'content-type': 'application/json',
+        'X-RapidAPI-Key': apiKey,
+        'X-RapidAPI-Host': apiHost,
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new AppError({
+        code: 'TIMEOUT',
+        message: 'Request to LinkedIn API timed out after 30 seconds',
+        cause: err,
+      });
+    }
+    throw createExternalServiceError(
+      'LinkedIn API',
+      'Failed to fetch profile',
+      err
+    );
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw createExternalServiceError(
+      'LinkedIn API',
+      `Failed to fetch LinkedIn profile data: ${
+        text || `Status ${res.status}`
+      }`,
+      { status: res.status, response: text }
+    );
+  }
+
+  // Parse and validate response
+  let raw: unknown;
+  try {
+    raw = await res.json();
+  } catch (err) {
+    throw new AppError({
+      code: 'PARSE_ERROR',
+      message: 'Failed to parse response from LinkedIn API',
+      cause: err,
+    });
+  }
+
+  // Validate response against schema
+  const validated = LinkedInRawProfileSchema.safeParse(raw);
+  if (!validated.success) {
+    // Log validation errors in development
+    if (process.env.NODE_ENV === 'development') {
+      console.error(
+        '[LinkedIn][route] Validation errors:',
+        validated.error.issues
+      );
+    }
+    throw new AppError({
+      code: 'UNPROCESSABLE_CONTENT',
+      message: 'LinkedIn API returned invalid data structure',
+      cause: validated.error,
+    });
+  }
+
+  // Conditional debug logging (only in development)
+  if (
+    process.env.NODE_ENV === 'development' ||
+    process.env.DEBUG_LINKEDIN_ROUTE === '1'
+  ) {
+    console.dir(
+      {
+        tag: '[LinkedIn][route] fetch response',
+        ok: res.ok,
+        status: res.status,
+        endpoint,
+        body: validated.data,
+      },
+      { depth: 3, colors: true }
+    );
+  }
+
+  // Use validated data
+  const profileData = validated.data;
+  const now = new Date();
+
+  // Prepare common fields
+  const fullName =
+    [profileData.firstName, profileData.lastName].filter(Boolean).join(' ') ||
+    null;
+  const updateData = {
+    fullName,
+    headline: profileData.headline || null,
+    profilePicture: profileData.profilePicture || null,
+    location: profileData.geo?.full || null,
+    summary: profileData.summary || null,
+    rawData: profileData,
+    lastAnalysedAt: now,
+  };
+
+  // Use upsert to avoid race conditions
+  await db
+    .insert(linkedinProfile)
+    .values({
+      id: createId('lpro'),
+      username,
+      ...updateData,
+    })
+    .onConflictDoUpdate({
+      target: linkedinProfile.username,
+      set: updateData,
+    });
+
+  return {
+    data: profileData,
+    lastAnalysedAt: now,
+  };
+}
+
 export async function POST(req: Request) {
   try {
-    const json = await req.json().catch(() => ({}));
+    // Parse request body with proper error handling
+    let json: unknown;
+    try {
+      json = await req.json();
+    } catch (err) {
+      throw new AppError({
+        code: 'PARSE_ERROR',
+        message: 'Invalid request body. Expected JSON.',
+        cause: err,
+      });
+    }
+
     const body = BodySchema.parse(json);
 
     let username: string | null = null;
@@ -67,101 +238,78 @@ export async function POST(req: Request) {
       }
     }
 
-    const apiHost = RAPID_API_URL;
-    const apiKey = process.env.RAPID_API_KEY;
+    // Check for existing pending request (request deduplication)
+    const existingRequest = pendingRequests.get(username);
+    if (existingRequest) {
+      // Wait for the existing request to complete
+      try {
+        const result = await existingRequest;
+        return NextResponse.json(
+          {
+            data: result.data,
+            lastAnalysedAt: result.lastAnalysedAt.toISOString(),
+            cached: false,
+          },
+          { status: 200 }
+        );
+      } catch (err) {
+        // If the existing request failed, we'll fall through to create a new one
+        // Remove the failed request from the map
+        pendingRequests.delete(username);
+        // Re-throw to be handled by outer catch
+        throw err;
+      }
+    }
 
-    if (!apiKey) {
+    // Create new request and store it for deduplication
+    const fetchPromise = fetchProfileFromAPI(username);
+    pendingRequests.set(username, fetchPromise);
+
+    try {
+      const result = await fetchPromise;
       return NextResponse.json(
         {
-          error:
-            'Server is not configured for LinkedIn fetch (missing RAPID_API_KEY).',
+          data: result.data,
+          lastAnalysedAt: result.lastAnalysedAt.toISOString(),
+          cached: false,
         },
-        { status: 500 }
+        { status: 200 }
       );
+    } finally {
+      // Always clean up the pending request
+      pendingRequests.delete(username);
     }
-
-    const endpoint = `https://${apiHost}/?username=${encodeURIComponent(
-      username
-    )}`;
-    const res = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'content-type': 'application/json',
-        'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': apiHost,
-      },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      return NextResponse.json(
-        {
-          error: 'Failed to fetch LinkedIn profile data',
-          details: text || `Status ${res.status}`,
-        },
-        { status: res.status }
-      );
-    }
-
-    const raw = await res.json();
-    console.dir(
-      {
-        tag: '[LinkedIn][route] fetch response',
-        ok: res.ok,
-        status: res.status,
-        endpoint,
-        body: raw,
-      },
-      { depth: Infinity, colors: true }
-    );
-
-    const now = new Date();
-    const existingProfile = await db.query.linkedinProfile.findFirst({
-      where: eq(linkedinProfile.username, username),
-    });
-
-    if (existingProfile) {
-      await db
-        .update(linkedinProfile)
-        .set({
-          fullName:
-            [raw.firstName, raw.lastName].filter(Boolean).join(' ') || null,
-          headline: raw.headline || null,
-          profilePicture: raw.profilePicture || null,
-          location: raw.geo?.full || null,
-          summary: raw.summary || null,
-          rawData: raw,
-          lastAnalysedAt: now,
-        })
-        .where(eq(linkedinProfile.id, existingProfile.id));
-    } else {
-      await db.insert(linkedinProfile).values({
-        id: createId('lpro'),
-        username,
-        fullName:
-          [raw.firstName, raw.lastName].filter(Boolean).join(' ') || null,
-        headline: raw.headline || null,
-        profilePicture: raw.profilePicture || null,
-        location: raw.geo?.full || null,
-        summary: raw.summary || null,
-        rawData: raw,
-        lastAnalysedAt: now,
-      });
-    }
-
-    return NextResponse.json(
-      {
-        data: raw,
-        lastAnalysedAt: now.toISOString(),
-        cached: false,
-      },
-      { status: 200 }
-    );
   } catch (err) {
     console.error('[LinkedIn][route] Error:', err);
+
+    // Handle AppError instances
+    if (err instanceof AppError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: err.code,
+        },
+        { status: err.getStatusFromCode() }
+      );
+    }
+
+    // Handle Zod validation errors
+    if (err instanceof z.ZodError) {
+      return NextResponse.json(
+        {
+          error: 'Validation error',
+          details: err.issues.map((issue) => issue.message).join(', '),
+        },
+        { status: 400 }
+      );
+    }
+
+    // Generic error fallback
     return NextResponse.json(
-      { error: 'Unexpected server error while fetching LinkedIn profile.' },
+      {
+        error: 'Unexpected server error while fetching LinkedIn profile.',
+        code: 'INTERNAL_SERVER_ERROR',
+      },
       { status: 500 }
     );
   }
