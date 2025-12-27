@@ -283,6 +283,7 @@ export async function POST(req: Request) {
       );
     }
 
+    // Handle Zod schema validation errors separately from other error types.
     if (err instanceof z.ZodError) {
       return NextResponse.json(
         {
