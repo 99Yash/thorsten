@@ -230,6 +230,11 @@ export async function POST(req: Request) {
       }
     }
 
+    // Deduplication strategy:
+    // If there's already a pending request for this username, wait for that
+    // in-flight request to complete instead of starting a new one. This
+    // ensures concurrent requests for the same profile share a single
+    // upstream API call, preserving our concurrency optimization.
     const existingRequest = pendingRequests.get(username);
     if (existingRequest) {
       try {
