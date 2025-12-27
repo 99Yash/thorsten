@@ -469,9 +469,9 @@ export function ProfileCard({
                     {educations.map((edu, idx) => {
                       const eduKey = `${edu.schoolName || 'unknown'}-${
                         edu.degree || 'no-degree'
-                      }-${edu.start?.year || idx}-${
+                      }-${edu.start?.year || 'no-start'}-${
                         edu.end?.year || 'ongoing'
-                      }`;
+                      }-${idx}`;
                       return (
                         <div key={eduKey} className="rounded-md border p-3.5">
                           <div className="flex items-start gap-3">
