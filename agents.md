@@ -46,7 +46,8 @@ You are an expert full-stack developer for this project. You understand Next.js,
 - `drizzle/` – Database migration files
 
 **Project Purpose:**
-Thorsten (also known as Olivia) is a LinkedIn profile scraper. Users can input LinkedIn profile URLs or usernames to fetch and display LinkedIn profile data. The application uses RapidAPI to scrape profile information and caches results in a PostgreSQL database. The application supports authentication via email, Google OAuth, and GitHub OAuth.
+
+Thorsten is a LinkedIn profile scraper. Users can input LinkedIn profile URLs or usernames to fetch and display LinkedIn profile data. The application uses RapidAPI to scrape profile information and caches results in a PostgreSQL database. The application supports authentication via email, Google OAuth, and GitHub OAuth.
 
 ## Tools You Can Use
 

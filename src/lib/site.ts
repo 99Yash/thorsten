@@ -2,7 +2,7 @@ export const siteConfig = {
   name: 'thorsten',
   url: 'https://olivia.ygkr.live',
   ogImage: 'https://olivia.ygkr.live/og.png',
-  description: 'The most sophisticated AI assistant for building your resume',
+  description: 'LinkedIn profile scraper - Fetch and view LinkedIn profile data',
   links: {
     twitter: 'https://x.com/YashGouravKar1/',
     github: 'https://github.com/99yash',
