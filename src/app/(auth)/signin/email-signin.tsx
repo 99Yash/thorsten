@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import React from 'react';
 import { toast } from 'sonner';
-import * as z from 'zod/v4';
+import { z } from 'zod';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Spinner } from '~/components/ui/spinner';
@@ -14,13 +14,9 @@ import {
   getLocalStorageItem,
   setLocalStorageItem,
 } from '~/lib/utils';
+import { emailSignInSchema } from '~/lib/validators';
 
-const schema = z.object({
-  email: z.email().max(255, 'Email must be less than 255 characters'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-});
-
-type EmailSignInProps = z.infer<typeof schema>;
+type EmailSignInProps = z.infer<typeof emailSignInSchema>;
 
 export function EmailSignIn() {
   const router = useRouter();
@@ -66,7 +62,7 @@ export function EmailSignIn() {
 
     const formData = new FormData(e.currentTarget);
 
-    const { success, data, error } = schema.safeParse(
+    const { success, data, error } = emailSignInSchema.safeParse(
       Object.fromEntries(formData)
     );
 

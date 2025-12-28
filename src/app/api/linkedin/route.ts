@@ -12,6 +12,7 @@ import {
 import type { LinkedInRawProfile } from '~/lib/linkedin/schema';
 import { LinkedInRawProfileSchema } from '~/lib/linkedin/schema';
 import { createExternalServiceError } from '~/lib/utils';
+import { linkedinApiBodySchema } from '~/lib/validators';
 
 const RAPID_API_URL = 'real-time-people-company-data.p.rapidapi.com';
 
@@ -22,19 +23,8 @@ const pendingRequests = new Map<
   Promise<{ data: LinkedInRawProfile; lastAnalysedAt: Date }>
 >();
 
-const BodySchema = z
-  .object({
-    url: z.url().optional(),
-    username: z.string().optional(),
-    forceRefresh: z.boolean().optional(), // bypass cache and fetch fresh
-  })
-  .refine((v) => Boolean(v.url || v.username), {
-    message: 'Either url or username must be provided',
-    path: ['url'],
-  });
-
 if (process.env.DEBUG_LINKEDIN_ROUTE === '1') {
-  console.log('[LinkedIn][route] BodySchema:', BodySchema);
+  console.log('[LinkedIn][route] linkedinApiBodySchema:', linkedinApiBodySchema);
   console.log(
     '[LinkedIn][route] LinkedInRawProfileSchema:',
     LinkedInRawProfileSchema
@@ -49,6 +39,14 @@ if (process.env.DEBUG_LINKEDIN_ROUTE === '1') {
 async function fetchProfileFromAPI(
   username: string
 ): Promise<{ data: LinkedInRawProfile; lastAnalysedAt: Date }> {
+  const trimmed = username.trim();
+  if (!trimmed || trimmed.length > 100 || !isLikelyUsername(trimmed)) {
+    throw new AppError({
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid username format or length',
+    });
+  }
+
   const apiHost = RAPID_API_URL;
   const apiKey = process.env.RAPID_API_KEY;
 
@@ -60,9 +58,7 @@ async function fetchProfileFromAPI(
     });
   }
 
-  const endpoint = `https://${apiHost}/?username=${encodeURIComponent(
-    username
-  )}`;
+  const endpoint = `https://${apiHost}/?username=${encodeURIComponent(trimmed)}`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -198,11 +194,14 @@ export async function POST(req: Request) {
       });
     }
 
-    const body = BodySchema.parse(json);
+    const body = linkedinApiBodySchema.parse(json);
 
     let username: string | null = null;
-    if (body.username && isLikelyUsername(body.username)) {
-      username = body.username.trim();
+    if (body.username) {
+      const trimmed = body.username.trim();
+      if (isLikelyUsername(trimmed)) {
+        username = trimmed;
+      }
     } else if (body.url) {
       username = extractLinkedInUsername(body.url);
     }
@@ -210,6 +209,20 @@ export async function POST(req: Request) {
     if (!username) {
       return NextResponse.json(
         { error: 'Invalid LinkedIn URL or username for a personal profile' },
+        { status: 400 }
+      );
+    }
+
+    if (username.length > 100) {
+      return NextResponse.json(
+        { error: 'Username exceeds maximum length of 100 characters' },
+        { status: 400 }
+      );
+    }
+
+    if (!isLikelyUsername(username)) {
+      return NextResponse.json(
+        { error: 'Invalid LinkedIn username format' },
         { status: 400 }
       );
     }

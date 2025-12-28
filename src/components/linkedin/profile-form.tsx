@@ -34,36 +34,12 @@ import {
   isLikelyUsername,
 } from '~/lib/linkedin/parse';
 import type { LinkedInRawProfile } from '~/lib/linkedin/schema';
+import {
+  profileFormInputSchema,
+  usernameQueryParamSchema,
+} from '~/lib/validators';
 
-const schema = z.object({
-  input: z
-    .string()
-    .min(3, 'Please enter a LinkedIn profile URL or username')
-    .refine(
-      (val) => {
-        const v = val.trim();
-        if (!v) return false;
-        try {
-          const url = new URL(v.startsWith('http') ? v : `https://${v}`);
-          const host = url.hostname.replace(/^www\./, '');
-          if (/(^|\.)linkedin\.(com|cn)$/i.test(host)) {
-            const p = url.pathname.toLowerCase();
-            if (
-              p.includes('/in/') ||
-              p.includes('/pub/') ||
-              p.split('/').includes('in')
-            ) {
-              return true;
-            }
-          }
-        } catch {}
-        return isLikelyUsername(v);
-      },
-      { message: 'Enter a valid LinkedIn personal profile URL or username' }
-    ),
-});
-
-type FormValues = z.infer<typeof schema>;
+type FormValues = z.infer<typeof profileFormInputSchema>;
 
 export function ProfileForm() {
   const [usernameParam, setUsernameParam] = useQueryState('username', {
@@ -80,20 +56,25 @@ export function ProfileForm() {
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(profileFormInputSchema),
     defaultValues: { input: '' },
     mode: 'onTouched',
   });
 
   React.useEffect(() => {
     if (usernameParam) {
+      const validated = usernameQueryParamSchema.safeParse(usernameParam);
+      if (!validated.success) {
+        return;
+      }
       const currentInput = form.getValues().input;
-      const extracted = extractLinkedInUsername(usernameParam) ?? usernameParam;
+      const extracted =
+        extractLinkedInUsername(validated.data) ?? validated.data;
       if (
         extracted !== currentInput &&
         extracted !== lastFetchedUsernameRef.current
       ) {
-        form.setValue('input', usernameParam);
+        form.setValue('input', validated.data);
       }
     }
   }, [usernameParam, form]);
@@ -112,12 +93,17 @@ export function ProfileForm() {
   // limited to `[usernameParam]` so that form or state updates inside this
   // effect do not cause additional, unintended fetches.
   React.useEffect(() => {
-    if (usernameParam && isLikelyUsername(usernameParam)) {
-      const extracted = extractLinkedInUsername(usernameParam) ?? usernameParam;
-      if (extracted !== lastFetchedUsernameRef.current) {
-        fetchProfile({ input: usernameParam }, false);
+    if (usernameParam) {
+      const validated = usernameQueryParamSchema.safeParse(usernameParam);
+      if (!validated.success) {
+        return;
       }
-    } else if (!usernameParam) {
+      const extracted =
+        extractLinkedInUsername(validated.data) ?? validated.data;
+      if (extracted !== lastFetchedUsernameRef.current) {
+        fetchProfile({ input: validated.data }, false);
+      }
+    } else {
       setProfile(null);
       setLastAnalysedAt(null);
       lastFetchedUsernameRef.current = null;
@@ -133,7 +119,7 @@ export function ProfileForm() {
       const username =
         extractLinkedInUsername(values.input) ?? values.input.trim();
 
-      if (!username || !isLikelyUsername(username)) {
+      if (!username || username.length > 100 || !isLikelyUsername(username)) {
         throw new Error('Invalid LinkedIn username');
       }
 

@@ -41,6 +41,7 @@ You are an expert full-stack developer for this project. You understand Next.js,
 - `src/lib/` – Shared utilities and business logic
   - `auth/` – Authentication utilities (client.ts, server.ts)
   - `linkedin/` – LinkedIn parsing and schema definitions
+  - `validators/` – Zod validation schemas organized by domain (auth.ts, linkedin.ts)
 - `src/hooks/` – Custom React hooks
 - `src/styles/` – Global styles and font definitions
 - `drizzle/` – Database migration files
@@ -123,6 +124,9 @@ async function getProfile(u: string) {
 - Use React Hook Form with Zod resolvers for form validation
 - Use `toast` from `sonner` for user notifications
 - Use Zod schemas for runtime validation (API routes, form inputs)
+  - Define all Zod schemas in `src/lib/validators/` directory, organized by domain (e.g., `auth.ts`, `linkedin.ts`)
+  - Always use `import * as z from "zod/v4"` for Zod imports in validator files
+  - Export schemas from `src/lib/validators/index.ts` for easy imports
 - Type all function parameters and return values
 - Use path aliases (`~/components`, `~/lib`) instead of relative imports
 
