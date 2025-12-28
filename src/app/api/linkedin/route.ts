@@ -42,7 +42,7 @@ async function fetchProfileFromAPI(
   const trimmed = username.trim();
   if (!trimmed || trimmed.length > 100 || !isLikelyUsername(trimmed)) {
     throw new AppError({
-      code: 'VALIDATION_ERROR',
+      code: 'BAD_REQUEST',
       message: 'Invalid username format or length',
     });
   }
