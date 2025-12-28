@@ -259,5 +259,6 @@ When working on tasks, follow this workflow:
 3. **Implement** – Write code following the standards above
 4. **Validate** – Ensure TypeScript compiles, linting passes, and logic is sound
 5. **Test** – Verify functionality works as expected (manual testing or unit tests if available)
+6. Remove any redundant or trivial comments in the code, best never keep them.
 
 Remember: This codebase prioritizes type safety, maintainability, and user experience. When in doubt, choose the more type-safe, explicit, and maintainable approach.
