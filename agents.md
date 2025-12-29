@@ -137,6 +137,7 @@ async function getProfile(u: string) {
 - Use `createId()` helper for generating IDs with prefixes
 - Always use migrations (`db:generate` → `db:migrate`) for schema changes
 - Use `db:push` only in development for rapid iteration
+- **Prevent N+1 queries:** Always use eager loading, batch queries, or `WITH` queries when fetching related data. Use Drizzle's `with` method for joins and avoid iterative database calls in loops
 
 **API Route Patterns:**
 
